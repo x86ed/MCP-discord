@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mcpdiscord:
+    build:
+      context: ../..
+      dockerfile: examples/deployment/Dockerfile
+    image: mcpdiscord:latest
+    container_name: mcpdiscord
+    restart: unless-stopped
+    
+    # Environment variables (use .env file or set here)
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    
+    # Optional: Mount custom config
+    volumes:
+      - ./mcp-config.json:/app/mcp-config.json:ro
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "pgrep", "mcpdiscord"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+# Optional: Named volumes for persistent data
+# volumes:
+#   mcpdiscord-data:
