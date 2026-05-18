@@ -1,0 +1,142 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test on Go ${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22', '1.23']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: go test -v -race ./...
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./...
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -func=coverage.out -o=coverage.txt
+
+      - name: Display coverage summary
+        run: |
+          echo "=== Code Coverage Summary ==="
+          cat coverage.txt
+
+      - name: Calculate total coverage
+        id: coverage
+        run: |
+          TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${TOTAL_COVERAGE}%"
+          echo "coverage=${TOTAL_COVERAGE}" >> $GITHUB_OUTPUT
+
+      - name: Per-package coverage breakdown
+        run: |
+          echo "=== Per-Package Coverage Breakdown ==="
+          go tool cover -func=coverage.out | grep -v "total:" | awk '{pkg=$1; gsub(/\/[^\/]+$/, "", pkg); cov[pkg]+=$3; count[pkg]++} END {for (p in cov) printf "%-50s %.1f%%\n", p, cov[p]/count[p]}' | sort
+
+      - name: Enforce 95% coverage threshold
+        run: |
+          COVERAGE=${{ steps.coverage.outputs.coverage }}
+          THRESHOLD=95.0
+          
+          echo "Coverage: ${COVERAGE}%"
+          echo "Threshold: ${THRESHOLD}%"
+          
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below the required threshold of ${THRESHOLD}%"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% meets the required threshold of ${THRESHOLD}%"
+          fi
+
+      - name: Upload coverage to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.txt
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = '${{ steps.coverage.outputs.coverage }}';
+            const threshold = '95.0';
+            const pass = parseFloat(coverage) >= parseFloat(threshold);
+            
+            const coverageReport = fs.readFileSync('coverage.txt', 'utf8');
+            const lines = coverageReport.split('\n').slice(0, 20).join('\n');
+            
+            const body = `## 📊 Code Coverage Report
+            
+            **Total Coverage:** ${coverage}%
+            **Required Threshold:** ${threshold}%
+            **Status:** ${pass ? '✅ PASS' : '❌ FAIL'}
+            
+            <details>
+            <summary>Coverage Details (top 20 functions)</summary>
+            
+            \`\`\`
+            ${lines}
+            \`\`\`
+            
+            </details>
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
