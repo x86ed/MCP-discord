@@ -48,144 +48,241 @@ package translator
 
 import (
 	"fmt"
+	"strings"
 
-	"mcpdiscord/internal/bot"
+	"github.com/bwmarrin/discordgo"
 	"mcpdiscord/internal/mcp"
 )
 
-// Translator handles bidirectional translation between MCP and Discord formats.
+// Translator converts between MCP tools and Discord slash commands.
 type Translator interface {
-	// ToolToCommand converts an MCP tool definition to a Discord slash command.
-	// It translates the JSON Schema to Discord command options.
-	ToolToCommand(tool mcp.Tool) (*bot.Command, error)
+	// ToolToSlashCommand converts an MCP tool to a Discord slash command.
+	ToolToSlashCommand(tool mcp.Tool) (*discordgo.ApplicationCommand, error)
 
-	// InteractionToArguments converts Discord interaction options to MCP tool arguments.
-	// It transforms Discord's option format to the JSON structure expected by the MCP tool.
-	InteractionToArguments(interaction *bot.Interaction) (map[string]interface{}, error)
-
-	// ResultToResponse converts an MCP tool result to a Discord response.
-	// It formats the content blocks as Discord messages with appropriate formatting.
-	ResultToResponse(result *mcp.ToolResult) (*bot.Response, error)
-
-	// ErrorToResponse converts an error to a user-friendly Discord response.
-	// It formats errors in a way that's helpful for Discord users.
-	ErrorToResponse(err error) *bot.Response
+	// TranslateArguments converts Discord interaction options to MCP tool arguments.
+	TranslateArguments(tool mcp.Tool, options []*discordgo.ApplicationCommandInteractionDataOption) (map[string]interface{}, error)
 }
 
-// translator is the concrete implementation of the Translator interface.
-// TODO: Implement in future change
-type translator struct {
-	maxChoices int // Maximum number of enum values to translate as Discord choices (25 limit)
+// DefaultTranslator implements the Translator interface.
+type DefaultTranslator struct{}
+
+// New creates a new DefaultTranslator.
+func New() *DefaultTranslator {
+	return &DefaultTranslator{}
 }
 
-// New creates a new translator instance.
-// TODO: Implement in future change
-func New() Translator {
-	return &translator{
-		maxChoices: 25, // Discord's maximum number of choices
+// ToolToSlashCommand converts an MCP tool to a Discord slash command.
+func (t *DefaultTranslator) ToolToSlashCommand(tool mcp.Tool) (*discordgo.ApplicationCommand, error) {
+	// Validate Discord limits
+	if err := validateDiscordLimits(tool); err != nil {
+		return nil, err
+	}
+
+	// Sanitize tool name for Discord (1-to-1 mapping: MCP "list" → Discord "/list")
+	commandName := SanitizeToolName(tool.Name)
+
+	// Truncate description to Discord's 100 character limit
+	description := tool.Description
+	if len(description) > 100 {
+		description = description[:97] + "..."
+	}
+	if description == "" {
+		description = "No description provided"
+	}
+
+	// Convert parameters to Discord options
+	options, err := parametersToOptions(tool.InputSchema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert parameters: %w", err)
+	}
+
+	return &discordgo.ApplicationCommand{
+		Name:        commandName,
+		Description: description,
+		Options:     options,
+	}, nil
+}
+
+// SanitizeToolName converts a tool name to a valid Discord command name.
+// Implements 1-to-1 mapping: MCP "list" → "/list", "Get Data" → "/get-data"
+func SanitizeToolName(name string) string {
+	// Lowercase
+	name = strings.ToLower(name)
+
+	// Replace spaces and underscores with hyphens
+	name = strings.ReplaceAll(name, " ", "-")
+	name = strings.ReplaceAll(name, "_", "-")
+
+	// Remove other special characters, keep only alphanumeric and hyphens
+	var result strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
+}
+
+// parametersToOptions converts MCP input schema properties to Discord options.
+func parametersToOptions(schema mcp.InputSchema) ([]*discordgo.ApplicationCommandOption, error) {
+	if len(schema.Properties) == 0 {
+		return nil, nil
+	}
+
+	options := make([]*discordgo.ApplicationCommandOption, 0, len(schema.Properties))
+
+	for name, prop := range schema.Properties {
+		// Check if parameter is required
+		required := false
+		for _, req := range schema.Required {
+			if req == name {
+				required = true
+				break
+			}
+		}
+
+		// Map MCP type to Discord type
+		optionType, hint := mapTypeToDiscord(prop.Type)
+
+		// Build description with hint for arrays/objects
+		description := prop.Description
+		if hint != "" {
+			if description != "" {
+				description = description + " " + hint
+			} else {
+				description = hint
+			}
+		}
+		if description == "" {
+			description = "No description"
+		}
+
+		// Truncate description to Discord's limit (100 chars)
+		if len(description) > 100 {
+			description = description[:97] + "..."
+		}
+
+		option := &discordgo.ApplicationCommandOption{
+			Type:        optionType,
+			Name:        name,
+			Description: description,
+			Required:    required,
+		}
+
+		options = append(options, option)
+	}
+
+	return options, nil
+}
+
+// mapTypeToDiscord maps MCP JSON Schema types to Discord option types.
+// Returns the Discord type and a hint to append to the description.
+func mapTypeToDiscord(mcpType string) (discordgo.ApplicationCommandOptionType, string) {
+	switch mcpType {
+	case "string":
+		return discordgo.ApplicationCommandOptionString, ""
+	case "number", "integer":
+		return discordgo.ApplicationCommandOptionNumber, ""
+	case "boolean":
+		return discordgo.ApplicationCommandOptionBoolean, ""
+	case "array":
+		return discordgo.ApplicationCommandOptionString, "(Comma-separated list)"
+	case "object":
+		return discordgo.ApplicationCommandOptionString, "(JSON object)"
+	default:
+		// Default to string for unknown types
+		return discordgo.ApplicationCommandOptionString, ""
 	}
 }
 
-// Schema Translation Rules
-//
-// The following table describes how JSON Schema types are mapped to Discord option types:
-//
-// | JSON Schema Type | Discord Option Type | Notes                                    |
-// |------------------|---------------------|------------------------------------------|
-// | string           | STRING              | Direct mapping                           |
-// | integer          | INTEGER             | Direct mapping                           |
-// | number           | NUMBER              | Supports decimals                        |
-// | boolean          | BOOLEAN             | True/false values                        |
-// | enum (≤25 items) | STRING with choices | Discord limit: 25 choices                |
-// | enum (>25 items) | STRING              | No choices, user types value             |
-// | object (simple)  | Multiple options    | Flatten one level                        |
-// | object (nested)  | STRING              | JSON string fallback                     |
-// | array            | STRING              | JSON string fallback (e.g., "[1,2,3]")   |
-//
-// Limitations:
-//   - Discord commands support max 25 options
-//   - Discord choices support max 25 values
-//   - Option names must be lowercase, alphanumeric with underscores/hyphens
-//   - Descriptions limited to 100 characters
-//
-// When a schema cannot be directly translated, the translator uses JSON string
-// fallback, allowing users to provide JSON-formatted values that are parsed
-// before calling the MCP tool.
+// validateDiscordLimits checks that the tool fits within Discord's constraints.
+func validateDiscordLimits(tool mcp.Tool) error {
+	// Discord allows max 25 options per command
+	if len(tool.InputSchema.Properties) > 25 {
+		return fmt.Errorf("tool '%s' has %d parameters (Discord limit: 25)",
+			tool.Name, len(tool.InputSchema.Properties))
+	}
 
-// ToolToCommand converts an MCP tool to a Discord command.
-// TODO: Implement in future change
-func (t *translator) ToolToCommand(tool mcp.Tool) (*bot.Command, error) {
-	return nil, fmt.Errorf("not yet implemented")
+	return nil
 }
 
-// InteractionToArguments converts a Discord interaction to MCP tool arguments.
-// TODO: Implement in future change
-func (t *translator) InteractionToArguments(interaction *bot.Interaction) (map[string]interface{}, error) {
-	return nil, fmt.Errorf("not yet implemented")
+// ValidateCommandCount checks if the number of commands exceeds Discord's limit.
+func ValidateCommandCount(count int) error {
+	const maxCommands = 100
+	if count > maxCommands {
+		return fmt.Errorf("cannot register %d commands (Discord limit: %d)", count, maxCommands)
+	}
+	return nil
 }
 
-// ResultToResponse converts an MCP tool result to a Discord response.
-// TODO: Implement in future change
-func (t *translator) ResultToResponse(result *mcp.ToolResult) (*bot.Response, error) {
-	return nil, fmt.Errorf("not yet implemented")
+// TranslateArguments converts Discord interaction options to MCP tool arguments.
+func (t *DefaultTranslator) TranslateArguments(tool mcp.Tool, options []*discordgo.ApplicationCommandInteractionDataOption) (map[string]interface{}, error) {
+	args := make(map[string]interface{})
+
+	// Build a map of option values by name
+	optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption)
+	for _, opt := range options {
+		optionMap[opt.Name] = opt
+	}
+
+	// Process each parameter in the schema
+	for paramName, paramSchema := range tool.InputSchema.Properties {
+		opt, exists := optionMap[paramName]
+
+		// Handle missing optional parameters (omit from MCP call)
+		if !exists {
+			isRequired := false
+			for _, req := range tool.InputSchema.Required {
+				if req == paramName {
+					isRequired = true
+					break
+				}
+			}
+			if !isRequired {
+				continue
+			}
+			return nil, fmt.Errorf("missing required parameter: %s", paramName)
+		}
+
+		// Translate based on parameter type
+		value, err := translateValue(paramSchema.Type, opt)
+		if err != nil {
+			return nil, fmt.Errorf("parameter '%s': %w", paramName, err)
+		}
+
+		args[paramName] = value
+	}
+
+	return args, nil
 }
 
-// ErrorToResponse converts an error to a Discord response.
-// TODO: Implement in future change
-func (t *translator) ErrorToResponse(err error) *bot.Response {
-	return &bot.Response{
-		Content:   fmt.Sprintf("Error: %v", err),
-		Ephemeral: true,
+// translateValue converts a Discord option value to the appropriate Go type based on MCP schema type.
+func translateValue(mcpType string, opt *discordgo.ApplicationCommandInteractionDataOption) (interface{}, error) {
+	switch mcpType {
+	case "string":
+		return opt.StringValue(), nil
+
+	case "number", "integer":
+		// Discord returns float64 for numbers
+		return opt.FloatValue(), nil
+
+	case "boolean":
+		return opt.BoolValue(), nil
+
+	case "array":
+		// Parse CSV string into array
+		csvStr := opt.StringValue()
+		return ParseCSV(csvStr), nil
+
+	case "object":
+		// Parse JSON string into object
+		jsonStr := opt.StringValue()
+		return ParseJSON(jsonStr)
+
+	default:
+		// Unknown type, return as string
+		return opt.StringValue(), nil
 	}
 }
 
-// Formatting Utilities
-//
-// These helper functions format content for Discord's markdown-style formatting:
-//
-//   - Bold: **text**
-//   - Italic: *text* or _text_
-//   - Code: `code`
-//   - Code Block: ```language\ncode\n```
-//   - Quote: > quote
-//   - Spoiler: ||spoiler||
-
-// formatText applies basic formatting to text content.
-// TODO: Implement in future change
-func formatText(text string) string {
-	return text
-}
-
-// truncateText truncates text to fit Discord's message limits.
-// Discord limits: 2000 chars for message content, 4096 for embed description
-// TODO: Implement in future change
-func truncateText(text string, maxLength int) string {
-	if len(text) <= maxLength {
-		return text
-	}
-	return text[:maxLength-3] + "..."
-}
-
-// sanitizeCommandName converts a tool name to a valid Discord command name.
-// Discord requirements: lowercase, alphanumeric with hyphens/underscores, 1-32 chars
-// TODO: Implement in future change
-func sanitizeCommandName(name string) string {
-	return name
-}
-
-// sanitizeOptionName converts a parameter name to a valid Discord option name.
-// Same requirements as command names
-// TODO: Implement in future change
-func sanitizeOptionName(name string) string {
-	return name
-}
-
-// truncateDescription truncates a description to fit Discord's limits.
-// Discord limits: 100 chars for command/option descriptions
-// TODO: Implement in future change
-func truncateDescription(description string) string {
-	if len(description) <= 100 {
-		return description
-	}
-	return description[:97] + "..."
-}
