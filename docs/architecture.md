@@ -32,6 +32,7 @@ This document describes the high-level architecture of the MCP-Discord bot, incl
 ### 1. Main Application (`cmd/mcpdiscord`)
 
 **Responsibilities:**
+
 - Application entry point
 - Configuration loading and validation
 - Component initialization and lifecycle management
@@ -39,6 +40,7 @@ This document describes the high-level architecture of the MCP-Discord bot, incl
 - Structured logging setup
 
 **Key Features:**
+
 - Multi-source configuration (flag > env > default)
 - Environment variable interpolation
 - Version information
@@ -51,18 +53,21 @@ This document describes the high-level architecture of the MCP-Discord bot, incl
 ### 2. Configuration System (`internal/config`)
 
 **Responsibilities:**
+
 - Parse JSON configuration files
 - Interpolate environment variables
 - Validate configuration
 - Multi-source loading with precedence
 
 **Components:**
+
 - `types.go`: Configuration struct definitions
 - `loader.go`: File loading and env interpolation
 - `validator.go`: Validation logic with descriptive errors
 
 **Configuration Flow:**
-```
+
+```yaml
 1. Determine config path (flag > env > default)
 2. Read JSON file
 3. Interpolate ${VAR_NAME} with environment values
@@ -77,12 +82,14 @@ This document describes the high-level architecture of the MCP-Discord bot, incl
 ### 3. Discord Bot (`internal/bot`)
 
 **Responsibilities:**
+
 - Connect to Discord Gateway
 - Register slash commands from MCP tools
 - Handle slash command interactions
 - Format and send responses
 
 **Data Flow:**
+
 ```
 Discord User Types /weather location:Seattle
          ↓
@@ -96,6 +103,7 @@ Passes to Translator
 ```
 
 **Key Operations:**
+
 - Command registration (global or guild-specific)
 - Interaction handling
 - Response formatting (text, embeds, ephemeral)
@@ -108,18 +116,21 @@ Passes to Translator
 ### 4. MCP Client (`internal/mcp`)
 
 **Responsibilities:**
+
 - Connect to MCP server via stdio/SSE/WebSocket
 - Call `tools/list` to discover available tools
 - Call `tools/call` to execute tools
 - Handle MCP protocol messages
 
 **Connection Types:**
+
 - **stdio**: Subprocess communication (most common)
 - **SSE**: Server-sent events over HTTP
 - **WebSocket**: Bidirectional websocket connection
 
 **Protocol Flow:**
-```
+
+```md
 1. Launch MCP server as subprocess (if stdio)
 2. Send tools/list request
 3. Receive tool definitions with JSON Schema
@@ -136,6 +147,7 @@ Passes to Translator
 ### 5. Translator (`internal/translator`)
 
 **Responsibilities:**
+
 - Convert MCP tool definitions → Discord command definitions
 - Map JSON Schema types → Discord option types
 - Convert Discord options → MCP tool arguments
@@ -144,7 +156,7 @@ Passes to Translator
 **Schema Translation:**
 
 | MCP (JSON Schema) | Discord Command Option |
-|-------------------|------------------------|
+| ------------------- | ------------------------ |
 | `string` | `STRING` |
 | `number` | `NUMBER` |
 | `integer` | `INTEGER` |
@@ -155,8 +167,9 @@ Passes to Translator
 
 **Translation Phases:**
 
-**Phase 1: Tool Discovery**
-```
+#### Phase 1: Tool Discovery
+
+```json
 MCP Tool Definition:
 {
   "name": "get_weather",
@@ -183,8 +196,9 @@ Discord Command:
 }
 ```
 
-**Phase 2: Execution**
-```
+#### Phase 2: Execution
+
+```json
 Discord Interaction:
 { "name": "get_weather", "options": { "location": "Seattle", "units": "F" } }
 
@@ -211,16 +225,19 @@ Discord Response:
 ### 6. Test Utilities (`internal/testutil`)
 
 **Responsibilities:**
+
 - Provide test helpers and mocks
 - Simplify test setup
 - Mock external dependencies
 
 **Components:**
+
 - `config.go`: Configuration test helpers
 - `mockmcp.go`: Mock MCP server for testing
 - `mockdiscord.go`: Mock Discord interactions
 
 **Usage:**
+
 ```go
 func TestMyFeature(t *testing.T) {
     cfg := testutil.TestConfig(t)
@@ -238,7 +255,7 @@ func TestMyFeature(t *testing.T) {
 
 ### Startup Flow
 
-```
+```md
 1. Parse CLI flags (--config, --version)
 2. Initialize logger
 3. Load configuration
@@ -257,7 +274,7 @@ func TestMyFeature(t *testing.T) {
 
 ### Command Execution Flow
 
-```
+```md
 User types /weather location:Seattle in Discord
          ↓
 1. Discord Gateway sends InteractionCreate
@@ -281,7 +298,7 @@ User sees result in Discord
 
 ### Shutdown Flow
 
-```
+```md
 1. Receive SIGINT or SIGTERM
 2. Cancel context
 3. Stop accepting new interactions
@@ -297,7 +314,7 @@ User sees result in Discord
 
 ## Package Dependencies
 
-```
+```file
 cmd/mcpdiscord
   └─> internal/config
 
@@ -319,6 +336,7 @@ internal/testutil
 ```
 
 **Dependency Rules:**
+
 - `internal/` packages cannot be imported by external projects
 - No circular dependencies
 - Each package has a single, well-defined responsibility
@@ -329,17 +347,20 @@ internal/testutil
 ## Concurrency Model
 
 ### Goroutines
+
 - **Main goroutine**: Configuration, initialization, shutdown coordination
 - **Discord event handler**: Processes incoming Discord interactions
 - **MCP client**: Manages subprocess stdio streams
 - **Signal handler**: Listens for OS signals
 
 ### Synchronization
+
 - **Context**: Used for cancellation and shutdown coordination
 - **Channels**: Signal handling, shutdown notifications
 - **Mutexes**: Protect shared state (if any)
 
 ### Error Handling
+
 - Errors propagate up via return values
 - Structured logging for operational errors
 - Graceful degradation where possible
@@ -350,16 +371,19 @@ internal/testutil
 ## Security Considerations
 
 ### Configuration
+
 - Environment variables for secrets
 - Never log sensitive values
 - Validate all inputs
 
 ### Discord
+
 - Verify interaction signatures (handled by discordgo)
 - Rate limit handling
 - Permission checks
 
 ### MCP
+
 - Subprocess isolation
 - Environment variable injection security
 - Input sanitization before calling tools
@@ -369,11 +393,13 @@ internal/testutil
 ## Performance Characteristics
 
 ### Bottlenecks
+
 1. **Discord API rate limits**: ~50 command registrations per 10 seconds
 2. **MCP tool execution**: Depends on server implementation
 3. **Network latency**: Discord Gateway + MCP server
 
 ### Optimization Strategies
+
 - Guild-specific commands for development (instant vs 1 hour)
 - Connection pooling for SSE/WebSocket transports
 - Caching of tool definitions
@@ -384,7 +410,8 @@ internal/testutil
 ## Future Architecture Extensions
 
 ### Multi-Server Support
-```
+
+```file
 One bot → Multiple MCP servers
 ├─ Server A: Weather tools (prefix: weather_)
 ├─ Server B: Search tools (prefix: search_)
@@ -392,16 +419,19 @@ One bot → Multiple MCP servers
 ```
 
 ### Command Caching
+
 - Cache translated commands
 - Update only when MCP server restarts
 - Reduce registration overhead
 
 ### Advanced Translation
+
 - Handle complex nested objects
 - Support for attachments/images
 - Modal forms for multi-step workflows
 
 ### Monitoring
+
 - Prometheus metrics
 - Distributed tracing
 - Health check endpoints
