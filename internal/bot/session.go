@@ -18,8 +18,9 @@ type DiscordBot struct {
 	mcpClient  mcp.Client
 	translator translator.Translator
 	discovery  *mcp.DiscoveryService
-	session    *discordgo.Session
+	session    DiscordSession
 	logger     *slog.Logger
+	userID     string // Bot's user ID
 
 	// Registered commands tracking
 	commands     []*discordgo.ApplicationCommand
@@ -39,10 +40,13 @@ func NewDiscordBot(
 	}
 
 	// Create Discord session with bot token
-	session, err := discordgo.New("Bot " + cfg.Token)
+	dgSession, err := discordgo.New("Bot " + cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Discord session: %w", err)
 	}
+
+	// Wrap the session with our interface adapter
+	session := NewDiscordgoSessionAdapter(dgSession)
 
 	bot := &DiscordBot{
 		config:       cfg,
@@ -71,7 +75,14 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to open Discord connection: %w", err)
 	}
 
-	b.logger.Info("Discord bot connected", "user", b.session.State.User.String())
+	// Store user ID for command operations
+	if user := b.session.GetUser(); user != nil {
+		b.userID = user.ID
+		b.logger.Info("Discord bot connected", "user", user.String())
+	} else {
+		b.logger.Info("Discord bot connected")
+	}
+
 	return nil
 }
 
@@ -135,7 +146,7 @@ func (b *DiscordBot) RegisterCommands(guildID string) error {
 	// Register new commands
 	b.commands = make([]*discordgo.ApplicationCommand, 0, len(commands))
 	for _, cmd := range commands {
-		registered, err := b.session.ApplicationCommandCreate(b.session.State.User.ID, guildID, cmd)
+		registered, err := b.session.ApplicationCommandCreate(b.userID, guildID, cmd)
 		if err != nil {
 			b.logger.Error("failed to register command", "name", cmd.Name, "error", err)
 			continue
@@ -153,14 +164,14 @@ func (b *DiscordBot) RegisterCommands(guildID string) error {
 // deregisterCommands removes all registered commands from Discord.
 func (b *DiscordBot) deregisterCommands(guildID string) error {
 	// Get existing commands
-	existing, err := b.session.ApplicationCommands(b.session.State.User.ID, guildID)
+	existing, err := b.session.ApplicationCommands(b.userID, guildID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch existing commands: %w", err)
 	}
 
 	// Delete each command
 	for _, cmd := range existing {
-		if err := b.session.ApplicationCommandDelete(b.session.State.User.ID, guildID, cmd.ID); err != nil {
+		if err := b.session.ApplicationCommandDelete(b.userID, guildID, cmd.ID); err != nil {
 			b.logger.Warn("failed to delete command", "id", cmd.ID, "name", cmd.Name, "error", err)
 		}
 	}
@@ -170,6 +181,11 @@ func (b *DiscordBot) deregisterCommands(guildID string) error {
 
 // onReady is called when the Discord bot connects successfully.
 func (b *DiscordBot) onReady(s *discordgo.Session, event *discordgo.Ready) {
+	b.handleReady(event)
+}
+
+// handleReady processes the ready event (testable version).
+func (b *DiscordBot) handleReady(event *discordgo.Ready) {
 	b.logger.Info("Discord bot ready",
 		"guilds", len(event.Guilds),
 		"user", event.User.String())
@@ -188,7 +204,7 @@ func (b *DiscordBot) onInteractionCreate(s *discordgo.Session, i *discordgo.Inte
 	}
 
 	// Immediately acknowledge to prevent timeout (3 second limit)
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err := b.session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 	})
 	if err != nil {
@@ -197,11 +213,11 @@ func (b *DiscordBot) onInteractionCreate(s *discordgo.Session, i *discordgo.Inte
 	}
 
 	// Process the command
-	go b.handleCommand(s, i)
+	go b.handleCommand(b.session, i)
 }
 
 // handleCommand processes a slash command interaction.
-func (b *DiscordBot) handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func (b *DiscordBot) handleCommand(s DiscordSession, i *discordgo.InteractionCreate) {
 	data := i.ApplicationCommandData()
 	commandName := data.Name
 
@@ -282,7 +298,7 @@ func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Resp
 }
 
 // sendResponse sends a response to a Discord interaction.
-func (b *DiscordBot) sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, resp *Response) {
+func (b *DiscordBot) sendResponse(s DiscordSession, i *discordgo.InteractionCreate, resp *Response) {
 	var embeds []*discordgo.MessageEmbed
 	if resp.Embed != nil {
 		embeds = []*discordgo.MessageEmbed{
@@ -304,10 +320,18 @@ func (b *DiscordBot) sendResponse(s *discordgo.Session, i *discordgo.Interaction
 }
 
 // sendError sends an error message to a Discord interaction.
-func (b *DiscordBot) sendError(s *discordgo.Session, i *discordgo.InteractionCreate, err error, isInternal bool) {
+func (b *DiscordBot) sendError(s DiscordSession, i *discordgo.InteractionCreate, err error, isInternal bool) {
+	// Get username safely (could be in Member or User depending on context)
+	username := "unknown"
+	if i.Member != nil && i.Member.User != nil {
+		username = i.Member.User.Username
+	} else if i.User != nil {
+		username = i.User.Username
+	}
+
 	b.logger.Error("command error",
 		"command", i.ApplicationCommandData().Name,
-		"user", i.Member.User.Username,
+		"user", username,
 		"error", err)
 
 	message := err.Error()

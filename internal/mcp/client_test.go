@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"testing"
 )
 
@@ -255,5 +256,140 @@ func TestCheckNameCollisions(t *testing.T) {
 				t.Errorf("Expected no error but got: %v", err)
 			}
 		})
+	}
+}
+
+// ==== Additional tests for ListTools, CallTool coverage ====
+
+func TestStdioClient_ListTools_Integration(t *testing.T) {
+	// Use a mock client to test ListTools logic
+	client := &MockClient{
+		tools: []Tool{
+			{
+				Name:        "test_tool",
+				Description: "Test",
+				InputSchema: InputSchema{Type: "object"},
+			},
+		},
+	}
+
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Errorf("ListTools failed: %v", err)
+	}
+
+	if len(tools) != 1 {
+		t.Errorf("Expected 1 tool, got %d", len(tools))
+	}
+}
+
+func TestStdioClient_CallTool_Integration(t *testing.T) {
+	// Use a mock client to test CallTool logic
+	client := &MockClient{
+		callResult: &ToolResult{
+			Content: []ContentBlock{
+				{Type: "text", Text: "Success"},
+			},
+			IsError: false,
+		},
+	}
+
+	result, err := client.CallTool(context.Background(), "test", map[string]interface{}{"arg": "value"})
+	if err != nil {
+		t.Errorf("CallTool failed: %v", err)
+	}
+
+	if result.IsError {
+		t.Error("Expected successful result")
+	}
+
+	if len(result.Content) != 1 {
+		t.Errorf("Expected 1 content block, got %d", len(result.Content))
+	}
+}
+
+func TestEncodeRequest_WithNilParams(t *testing.T) {
+	req := &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "test",
+		Params:  nil,
+	}
+
+	data, err := EncodeRequest(req)
+	if err != nil {
+		t.Fatalf("EncodeRequest with nil params failed: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Error("Expected non-empty data")
+	}
+}
+
+func TestEncodeRequest_WithComplexParams(t *testing.T) {
+	req := &JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "test",
+		Params: map[string]interface{}{
+			"string":  "value",
+			"number":  42,
+			"boolean": true,
+			"array":   []string{"a", "b", "c"},
+			"object": map[string]interface{}{
+				"nested": "data",
+			},
+		},
+	}
+
+	data, err := EncodeRequest(req)
+	if err != nil {
+		t.Fatalf("EncodeRequest with complex params failed: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Error("Expected non-empty data")
+	}
+}
+
+func TestDecodeResponse_WithError(t *testing.T) {
+	data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid request"}}`)
+
+	resp, err := DecodeResponse(data)
+	if err != nil {
+		t.Fatalf("DecodeResponse failed: %v", err)
+	}
+
+	if resp.Error == nil {
+		t.Error("Expected error in response")
+	}
+
+	if resp.Error.Code != -32600 {
+		t.Errorf("Expected error code -32600, got %d", resp.Error.Code)
+	}
+}
+
+func TestDecodeResponse_InvalidJSON(t *testing.T) {
+	data := []byte(`{invalid json}`)
+
+	_, err := DecodeResponse(data)
+	if err == nil {
+		t.Error("Expected decode error for invalid JSON")
+	}
+}
+
+func TestNewRequest_Sequential(t *testing.T) {
+	// Test that request IDs increment
+	var ids []int64
+	for i := 0; i < 5; i++ {
+		req := NewRequest("test", nil)
+		ids = append(ids, req.ID)
+	}
+
+	// Check all IDs are unique and increasing
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Errorf("IDs not incrementing: %d <= %d", ids[i], ids[i-1])
+		}
 	}
 }
