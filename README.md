@@ -84,6 +84,96 @@ export MCP_CONFIG_PATH=/path/to/config.json
 ./mcpdiscord --version
 ```
 
+## Using Slash Commands
+
+Once the bot is running and connected to Discord, it will automatically register all MCP tools as slash commands with a **1-to-1 mapping** (e.g., MCP tool "list" → Discord command "/list").
+
+### Command Discovery
+
+The bot discovers available tools from your MCP server at startup and registers them as Discord slash commands. Each tool's name, description, and parameters are automatically translated.
+
+### Parameter Formats
+
+MCP tools use JSON Schema for parameter definitions. The bot translates these to Discord's option types:
+
+| MCP Type | Discord Type | Format |
+|----------|-------------|--------|
+| `string` | String | Direct text input |
+| `number`/`integer` | Number | Numeric input |
+| `boolean` | Boolean | True/false toggle |
+| `array` | String | **Comma-separated values** |
+| `object` | String | **JSON object string** |
+
+### Array Parameters (CSV Format)
+
+For array parameters, provide comma-separated values. The bot will trim whitespace around items.
+
+**Examples:**
+```
+/get_weather locations: Seattle, Portland, San Francisco
+/list_users ids: user1, user2, user3
+/process_items items: apple,banana,orange
+```
+
+**Notes:**
+- Whitespace around commas is trimmed automatically
+- Empty items are filtered out
+- Single items work without commas: `Seattle`
+- **Limitation**: Cannot include commas within items (no escaping support)
+
+### Object Parameters (JSON Format)
+
+For object parameters, provide a JSON string. The bot validates JSON syntax and provides helpful error messages.
+
+**Examples:**
+```
+/configure settings: {"theme": "dark", "notifications": true}
+/create_user data: {"name": "Alice", "age": 30, "email": "alice@example.com"}
+/query filters: {"status": "active", "role": "admin"}
+```
+
+**Nested objects:**
+```
+/create_profile data: {"name": "Bob", "address": {"city": "Seattle", "state": "WA"}}
+```
+
+**Notes:**
+- Must be valid JSON (use double quotes for strings)
+- Can include nested objects and arrays
+- Bot will show error with example if JSON is invalid
+
+### Discord Limitations
+
+The bot respects Discord's platform constraints:
+
+| Limit | Value |
+|-------|-------|
+| Max commands per guild | 100 |
+| Max options per command | 25 |
+| Command description length | 100 characters |
+| Option description length | 100 characters |
+| Embed description length | 4096 characters |
+
+Descriptions exceeding limits are automatically truncated with "..." suffix.
+
+### Response Format
+
+Responses are displayed as rich embeds:
+
+**Success (Green):**
+```
+✓ tool_name
+Result content here
+```
+
+**Error (Red):**
+```
+✗ tool_name
+Error message here
+```
+
+JSON/structured responses are automatically formatted with code blocks.
+
 ## Configuration
 
 ### Configuration File Format
