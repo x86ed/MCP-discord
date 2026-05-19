@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
 	"mcpdiscord/internal/config"
 	"mcpdiscord/internal/mcp"
 	"mcpdiscord/internal/translator"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 // DiscordBot implements the Bot interface using discordgo.

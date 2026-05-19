@@ -27,8 +27,8 @@ type StdioClient struct {
 	logger *slog.Logger
 
 	// Response handling
-	responses  map[int64]chan *JSONRPCResponse
-	respMu     sync.Mutex
+	responses   map[int64]chan *JSONRPCResponse
+	respMu      sync.Mutex
 	readerReady chan struct{} // Signals when response reader is ready
 }
 
@@ -329,13 +329,13 @@ func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JS
 func (c *StdioClient) readResponses() {
 	c.logger.Info("starting response reader goroutine")
 	scanner := bufio.NewScanner(c.stdout)
-	
+
 	// Signal that reader is ready
 	close(c.readerReady)
-	
+
 	// Log that we're about to start scanning
 	c.logger.Info("response reader: starting scan loop")
-	
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
