@@ -15,6 +15,8 @@ type MockClient struct {
 	connectErr  error
 	callToolErr error
 	callResult  *ToolResult
+	failCount   int // Number of times to fail before succeeding
+	callCount   int // Tracks how many times methods have been called
 }
 
 func (m *MockClient) Connect(ctx context.Context) error {
@@ -22,7 +24,11 @@ func (m *MockClient) Connect(ctx context.Context) error {
 }
 
 func (m *MockClient) ListTools(ctx context.Context) ([]Tool, error) {
-	return m.tools, m.err
+	m.callCount++
+	if m.failCount > 0 && m.callCount <= m.failCount {
+		return nil, m.err
+	}
+	return m.tools, nil
 }
 
 func (m *MockClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (*ToolResult, error) {
@@ -198,6 +204,77 @@ func TestParseInputSchema(t *testing.T) {
 	}
 	if ageParam.Required {
 		t.Error("Expected 'age' to be optional")
+	}
+}
+
+func TestDiscoverWithReconnect_Success(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Client that fails once then succeeds
+	client := &MockClient{
+		tools: []Tool{
+			{
+				Name:        "test_tool",
+				Description: "Test tool",
+				InputSchema: InputSchema{Type: "object"},
+			},
+		},
+		err:       errors.New("first call fails"),
+		failCount: 1, // Fail the first call
+	}
+
+	service := NewDiscoveryService(client, logger)
+	ctx := context.Background()
+
+	tools, err := service.DiscoverWithReconnect(ctx)
+	if err != nil {
+		t.Fatalf("DiscoverWithReconnect failed: %v", err)
+	}
+
+	if len(tools) != 1 {
+		t.Errorf("Expected 1 tool, got %d", len(tools))
+	}
+
+	// Should have called ListTools twice (once failed, once succeeded)
+	if client.callCount != 2 {
+		t.Errorf("Expected 2 calls to ListTools, got %d", client.callCount)
+	}
+}
+
+func TestDiscoverWithReconnect_ConnectionFailure(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Client that fails to reconnect
+	client := &MockClient{
+		connectErr: errors.New("connection failed"),
+		err:        errors.New("discovery failed"),
+		failCount:  1,
+	}
+
+	service := NewDiscoveryService(client, logger)
+	ctx := context.Background()
+
+	_, err := service.DiscoverWithReconnect(ctx)
+	if err == nil {
+		t.Error("Expected error when reconnection fails")
+	}
+}
+
+func TestDiscoverWithReconnect_DiscoveryFailsAfterReconnect(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Client that keeps failing
+	client := &MockClient{
+		err:       errors.New("discovery always fails"),
+		failCount: 10, // Fail many times
+	}
+
+	service := NewDiscoveryService(client, logger)
+	ctx := context.Background()
+
+	_, err := service.DiscoverWithReconnect(ctx)
+	if err == nil {
+		t.Error("Expected error when discovery fails after reconnect")
 	}
 }
 
