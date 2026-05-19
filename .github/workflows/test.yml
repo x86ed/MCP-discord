@@ -61,10 +61,14 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          # Run coverage on all internal packages
-          # cmd/mcpdiscord (main package) is excluded as entry points are typically tested via integration tests
+          # Run coverage on production internal packages only
+          # Excluded: cmd/mcpdiscord (main package - tested via integration)
+          # Excluded: internal/testutil/* (test infrastructure and utilities)
           go test -coverprofile=coverage.out -covermode=atomic \
-            ./internal/...
+            ./internal/bot \
+            ./internal/config \
+            ./internal/mcp \
+            ./internal/translator
 
       - name: Generate coverage report
         run: |
@@ -73,8 +77,8 @@ jobs:
       - name: Display coverage summary
         run: |
           echo "=== Code Coverage Summary ==="
-          echo "Note: Coverage is calculated for all internal packages."
-          echo "Excluded: cmd (main package - entry points tested via integration tests)."
+          echo "Coverage for production packages: bot, config, mcp, translator"
+          echo "Excluded: cmd (main package), internal/testutil (test infrastructure)"
           cat coverage.txt
 
       - name: Calculate total coverage
@@ -92,12 +96,17 @@ jobs:
       - name: Enforce coverage threshold
         run: |
           COVERAGE=${{ steps.coverage.outputs.coverage }}
-          THRESHOLD=25.0
+          THRESHOLD=90.0
           
           echo "Coverage: ${COVERAGE}%"
           echo "Threshold: ${THRESHOLD}%"
-          echo "Note: Threshold is currently 25% due to Discord/MCP integration code requiring mocks."
-          echo "      This should be increased as more unit tests and mocks are added."
+          
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
+          fi
           
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "❌ Coverage ${COVERAGE}% is below the required threshold of ${THRESHOLD}%"
