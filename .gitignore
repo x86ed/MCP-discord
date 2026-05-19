@@ -42,6 +42,10 @@ dist/
 *.cover
 testdata/temp/
 
+# Test MCP server binary (built automatically during tests)
+internal/testutil/mcpserver/testmcp
+internal/testutil/mcpserver/testmcp.exe
+
 # Coverage reports
 coverage.out
 coverage.html
