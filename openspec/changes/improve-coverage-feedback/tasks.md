@@ -16,7 +16,7 @@
 - [x] 3.1 Test workflow locally or in draft PR with coverage < 90% (verify failure)
 - [x] 3.2 Test workflow with coverage 90-94% (verify pass with warning)
 - [x] 3.3 Test workflow with coverage >= 95% (verify pass with success)
-- [ ] 3.4 Verify GitHub Actions annotations appear correctly in workflow UI
+- [x] 3.4 Verify GitHub Actions annotations appear correctly in workflow UI
 
 ## 4. Documentation
 

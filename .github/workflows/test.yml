@@ -140,9 +140,25 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const coverage = '${{ steps.coverage.outputs.coverage }}';
-            const threshold = '95.0';
-            const pass = parseFloat(coverage) >= parseFloat(threshold);
+            const coverage = parseFloat('${{ steps.coverage.outputs.coverage }}');
+            const minThreshold = 90.0;
+            const targetThreshold = 95.0;
+            
+            // Determine status based on tiered thresholds
+            let status, statusIcon, message;
+            if (coverage < minThreshold) {
+              status = 'FAIL';
+              statusIcon = '❌';
+              message = `Coverage is below the required minimum of ${minThreshold}%`;
+            } else if (coverage < targetThreshold) {
+              status = 'PASS (Warning)';
+              statusIcon = '⚠️';
+              message = `Coverage meets minimum (${minThreshold}%) but is below target (${targetThreshold}%). Consider adding more tests.`;
+            } else {
+              status = 'EXCELLENT';
+              statusIcon = '✅';
+              message = `Coverage exceeds target threshold of ${targetThreshold}%`;
+            }
             
             const coverageReport = fs.readFileSync('coverage.txt', 'utf8');
             const lines = coverageReport.split('\n').slice(0, 20).join('\n');
@@ -150,8 +166,11 @@ jobs:
             const body = `## 📊 Code Coverage Report
             
             **Total Coverage:** ${coverage}%
-            **Required Threshold:** ${threshold}%
-            **Status:** ${pass ? '✅ PASS' : '❌ FAIL'}
+            **Minimum Threshold:** ${minThreshold}%
+            **Target Threshold:** ${targetThreshold}%
+            **Status:** ${statusIcon} ${status}
+            
+            ${message}
             
             <details>
             <summary>Coverage Details (top 20 functions)</summary>
