@@ -31,9 +31,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
-
-	"mcpdiscord/internal/config"
 )
 
 // Bot represents a Discord bot instance that bridges to an MCP server.
@@ -78,30 +75,30 @@ type Interaction struct {
 	ChannelID string
 }
 
-// Response represents a response to send back to Discord after handling an interaction.
+// Response represents a bot response to a Discord interaction.
 type Response struct {
 	// Content is the text content of the response
 	Content string
 
-	// Ephemeral indicates whether the response should only be visible to the user
-	Ephemeral bool
-
-	// Embed is an optional rich embed for formatted responses
+	// Embed contains rich embed data for the response
 	Embed *Embed
+
+	// Ephemeral indicates if the response should only be visible to the user
+	Ephemeral bool
 }
 
-// Embed represents a Discord rich embed for formatted responses.
+// Embed represents a Discord embed for rich message formatting.
 type Embed struct {
-	// Title is the embed title
+	// Title of the embed
 	Title string
 
-	// Description is the main embed content
+	// Description is the main text content
 	Description string
 
-	// Color is the embed color (integer RGB)
+	// Color is the sidebar color (0x for hex colors)
 	Color int
 
-	// Fields are optional additional fields
+	// Fields contains additional structured data
 	Fields []EmbedField
 }
 
@@ -112,62 +109,3 @@ type EmbedField struct {
 	Inline bool
 }
 
-// Command represents a Discord slash command definition.
-type Command struct {
-	// Name is the command name (must be lowercase, no spaces)
-	Name string
-
-	// Description is the command description shown in Discord
-	Description string
-
-	// Options are the command parameters
-	Options []CommandOption
-}
-
-// CommandOption represents a parameter for a Discord slash command.
-type CommandOption struct {
-	// Name is the option name (must be lowercase, no spaces)
-	Name string
-
-	// Description is the option description shown in Discord
-	Description string
-
-	// Type is the option type (string, integer, boolean, etc.)
-	Type OptionType
-
-	// Required indicates whether this option must be provided
-	Required bool
-
-	// Choices are predefined values for this option (optional)
-	Choices []Choice
-}
-
-// OptionType represents a Discord command option type.
-type OptionType int
-
-const (
-	OptionTypeString OptionType = iota
-	OptionTypeInteger
-	OptionTypeBoolean
-	OptionTypeNumber
-)
-
-// Choice represents a predefined choice for a command option.
-type Choice struct {
-	Name  string
-	Value interface{}
-}
-
-// bot is the concrete implementation of the Bot interface.
-// TODO: Implement in future change
-type bot struct {
-	config     config.DiscordConfig
-	mcpClient  interface{} // TODO: Replace with actual MCP client interface
-	translator interface{} // TODO: Replace with actual translator interface
-}
-
-// New creates a new Discord bot instance.
-// TODO: Implement in future change
-func New(cfg config.DiscordConfig, mcpClient, translator interface{}) (Bot, error) {
-	return nil, fmt.Errorf("not yet implemented")
-}
