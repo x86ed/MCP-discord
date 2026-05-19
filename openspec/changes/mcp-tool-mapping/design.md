@@ -40,10 +40,11 @@ Current state:
 
 ### 2. Slash Command Mapping Strategy
 
-**Decision**: Map MCP tool names directly to slash command names, with schema properties to command options.
+**Decision**: Map MCP tool names directly to Discord slash command names in a 1-to-1 fashion.
 
 **Mapping rules**:
-- Tool name → command name (sanitized: lowercase, replace spaces/special chars with `-`)
+- MCP tool name → Discord slash command name (e.g., MCP "list" tool → `/list` command)
+- Sanitization: lowercase, replace spaces/special chars with `-` (e.g., "Get Data" → `/get-data`)
 - Tool description → command description (truncated to Discord's 100 char limit)
 - Each input schema property → slash command option
 - Property types map as: `string`→String, `number`→Number, `boolean`→Boolean, `array`→String (CSV), `object`→String (JSON)

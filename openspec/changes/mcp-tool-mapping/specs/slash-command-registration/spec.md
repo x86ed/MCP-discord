@@ -2,11 +2,15 @@
 
 ### Requirement: Register slash commands for discovered tools
 
-The system SHALL register a Discord slash command for each discovered MCP tool using the Discord API.
+The system SHALL register a Discord slash command for each discovered MCP tool using the Discord API in a 1-to-1 mapping.
 
 #### Scenario: Register command for simple tool
-- **WHEN** a tool with name "weather" and description "Get weather data" is discovered
-- **THEN** the system registers a slash command "/weather" with the tool's description
+- **WHEN** an MCP tool with name "weather" and description "Get weather data" is discovered
+- **THEN** the system registers Discord slash command "/weather" with the tool's description
+
+#### Scenario: Direct mapping for list command
+- **WHEN** an MCP tool named "list" is discovered
+- **THEN** the system registers Discord slash command "/list"
 
 #### Scenario: Sanitize tool names for Discord
 - **WHEN** a tool name contains spaces or special characters (e.g., "Get User Data")

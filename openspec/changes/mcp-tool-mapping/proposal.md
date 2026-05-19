@@ -5,7 +5,7 @@ The Discord bot currently has no mechanism to discover and expose MCP server too
 ## What Changes
 
 - Add automatic discovery of MCP tools from the configured server
-- Implement dynamic Discord slash command registration for each discovered tool
+- Implement 1-to-1 dynamic Discord slash command registration for each discovered MCP tool (e.g., MCP "list" → Discord "/list")
 - Add argument type translation (CSV for list parameters, JSON strings for object parameters)
 - Implement command execution pipeline that translates Discord interactions to MCP tool calls
 - Add response formatting to display MCP tool results in Discord messages
