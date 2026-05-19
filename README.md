@@ -130,6 +130,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 ### Connecting to Different MCP Servers
 
 **Weather Server:**
+
 ```json
 {
   "mcp": {
@@ -140,6 +141,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 ```
 
 **Custom Server:**
+
 ```json
 {
   "mcp": {
@@ -150,6 +152,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 ```
 
 **Node.js Server:**
+
 ```json
 {
   "mcp": {
@@ -162,6 +165,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 ### Development vs Production
 
 **Development** (fast command updates):
+
 ```json
 {
   "discord": {
@@ -171,6 +175,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 ```
 
 **Production** (global commands):
+
 ```json
 {
   "discord": {
