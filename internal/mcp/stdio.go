@@ -305,7 +305,7 @@ func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JS
 		c.mu.Unlock()
 		return nil, fmt.Errorf("client not connected")
 	}
-	_, err := c.stdin.Write(append(data, '\n'))
+	_, err = c.stdin.Write(append(data, '\n'))
 	c.mu.Unlock()
 
 	if err != nil {

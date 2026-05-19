@@ -10,6 +10,7 @@ import (
 	"mcpdiscord/internal/config"
 )
 
+
 func TestStdioClient_SendReceive(t *testing.T) {
 	// Create a mock JSON-RPC server using cat command
 	// cat will echo back whatever we send to it
@@ -36,10 +37,10 @@ func TestNewRequest_Sequence(t *testing.T) {
 	req2 := NewRequest("method2", nil)
 	req3 := NewRequest("method3", nil)
 
-	if req1.ID >= req2.ID {
+	if req1.ID == nil || req2.ID == nil || *req1.ID >= *req2.ID {
 		t.Error("Request IDs should increment")
 	}
-	if req2.ID >= req3.ID {
+	if req2.ID == nil || req3.ID == nil || *req2.ID >= *req3.ID {
 		t.Error("Request IDs should increment")
 	}
 
@@ -51,7 +52,7 @@ func TestNewRequest_Sequence(t *testing.T) {
 func TestEncodeDecodeRoundtrip(t *testing.T) {
 	originalReq := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      42,
+		ID:      int64Ptr(42),
 		Method:  "test/method",
 		Params:  map[string]interface{}{"key": "value"},
 	}
@@ -78,8 +79,8 @@ func TestEncodeDecodeRoundtrip(t *testing.T) {
 		t.Fatalf("Decode failed: %v", err)
 	}
 
-	if resp.ID != originalReq.ID {
-		t.Errorf("ID mismatch: got %d, want %d", resp.ID, originalReq.ID)
+	if originalReq.ID == nil || resp.ID != *originalReq.ID {
+		t.Errorf("ID mismatch: got %d, want %d", resp.ID, *originalReq.ID)
 	}
 }
 

@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+// Helper function for tests
+func int64Ptr(i int64) *int64 {
+	return &i
+}
+
 func TestNewRequest(t *testing.T) {
 	req := NewRequest("test/method", map[string]interface{}{"key": "value"})
 
@@ -16,21 +21,21 @@ func TestNewRequest(t *testing.T) {
 		t.Errorf("Method = %q, want %q", req.Method, "test/method")
 	}
 
-	if req.ID == 0 {
+	if req.ID == nil || *req.ID == 0 {
 		t.Error("Expected non-zero ID")
 	}
 
 	// Test that IDs increment
 	req2 := NewRequest("another/method", nil)
-	if req2.ID <= req.ID {
-		t.Errorf("Expected ID to increment: %d <= %d", req2.ID, req.ID)
+	if req2.ID == nil || req.ID == nil || *req2.ID <= *req.ID {
+		t.Errorf("Expected ID to increment: %d <= %d", *req2.ID, *req.ID)
 	}
 }
 
 func TestEncodeRequest(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      123,
+		ID:      int64Ptr(123),
 		Method:  "test/method",
 		Params:  map[string]interface{}{"key": "value"},
 	}
@@ -311,7 +316,7 @@ func TestStdioClient_CallTool_Integration(t *testing.T) {
 func TestEncodeRequest_WithNilParams(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      int64Ptr(1),
 		Method:  "test",
 		Params:  nil,
 	}
@@ -329,7 +334,7 @@ func TestEncodeRequest_WithNilParams(t *testing.T) {
 func TestEncodeRequest_WithComplexParams(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      int64Ptr(1),
 		Method:  "test",
 		Params: map[string]interface{}{
 			"string":  "value",
@@ -383,7 +388,9 @@ func TestNewRequest_Sequential(t *testing.T) {
 	var ids []int64
 	for i := 0; i < 5; i++ {
 		req := NewRequest("test", nil)
-		ids = append(ids, req.ID)
+		if req.ID != nil {
+			ids = append(ids, *req.ID)
+		}
 	}
 
 	// Check all IDs are unique and increasing
