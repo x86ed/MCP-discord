@@ -9,7 +9,7 @@ import (
 // JSONRPCRequest represents a JSON-RPC 2.0 request message.
 type JSONRPCRequest struct {
 	JSONRPC string      `json:"jsonrpc"`
-	ID      int64       `json:"id"`
+	ID      *int64      `json:"id,omitempty"` // Pointer to support notifications (no ID)
 	Method  string      `json:"method"`
 	Params  interface{} `json:"params,omitempty"`
 }
@@ -37,7 +37,7 @@ func NewRequest(method string, params interface{}) *JSONRPCRequest {
 	id := atomic.AddInt64(&requestIDCounter, 1)
 	return &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      id,
+		ID:      &id,
 		Method:  method,
 		Params:  params,
 	}
