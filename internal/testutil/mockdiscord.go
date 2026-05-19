@@ -6,14 +6,14 @@ import (
 
 // MockDiscordInteraction represents a mock Discord interaction for testing.
 type MockDiscordInteraction struct {
-	t              *testing.T
-	CommandName    string
-	Options        map[string]interface{}
-	UserID         string
-	GuildID        string
-	ChannelID      string
-	ResponseSent   bool
-	ResponseData   *MockInteractionResponse
+	t            *testing.T
+	CommandName  string
+	Options      map[string]interface{}
+	UserID       string
+	GuildID      string
+	ChannelID    string
+	ResponseSent bool
+	ResponseData *MockInteractionResponse
 }
 
 // MockInteractionResponse represents a mock interaction response.
