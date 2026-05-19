@@ -290,9 +290,16 @@ func TestIntegration_FullFlow(t *testing.T) {
 
 ### Test Coverage Requirements
 
-- **Minimum**: 95% coverage (enforced by CI)
+- **Minimum**: 90% coverage (enforced by CI - workflow fails below this)
+- **Target**: 95% coverage (recommended - workflow passes with warning 90-95%)
+- **Excellent**: 95%+ coverage (workflow passes with success message)
 - **Goal**: 100% for critical packages (config, translator)
 - **Focus**: Edge cases, error paths, validation logic
+
+The CI workflow uses tiered thresholds:
+- < 90%: ❌ Fails with error
+- 90-94.99%: ⚠️ Passes with warning (meets minimum, aim higher)
+- ≥ 95%: ✅ Passes with success (excellent coverage)
 
 ### Using Test Utilities
 
