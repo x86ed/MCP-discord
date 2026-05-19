@@ -23,13 +23,14 @@
 ## 3. Translation Layer - Command Mapping
 
 - [ ] 3.1 Define `Translator` interface in `internal/translator/translator.go`
-- [ ] 3.2 Implement tool name sanitization (lowercase, special chars to `-`)
-- [ ] 3.3 Implement `ToolToSlashCommand` method to convert MCP tool to Discord command structure
-- [ ] 3.4 Add parameter type mapping (string→String, number→Number, boolean→Boolean, array→String, object→String)
-- [ ] 3.5 Add parameter description hints for arrays ("Comma-separated list") and objects ("JSON object")
-- [ ] 3.6 Implement required/optional parameter mapping from MCP schema to Discord options
-- [ ] 3.7 Add validation for Discord limits (100 commands, 25 options per command)
-- [ ] 3.8 Add parameter description truncation to fit Discord's limits
+- [ ] 3.2 Implement 1-to-1 tool name mapping: MCP tool name → Discord slash command name (e.g., "list" → "/list")
+- [ ] 3.3 Implement tool name sanitization (lowercase, special chars to `-`) for names with spaces/special chars
+- [ ] 3.4 Implement `ToolToSlashCommand` method to convert MCP tool to Discord command structure
+- [ ] 3.5 Add parameter type mapping (string→String, number→Number, boolean→Boolean, array→String, object→String)
+- [ ] 3.6 Add parameter description hints for arrays ("Comma-separated list") and objects ("JSON object")
+- [ ] 3.7 Implement required/optional parameter mapping from MCP schema to Discord options
+- [ ] 3.8 Add validation for Discord limits (100 commands, 25 options per command)
+- [ ] 3.9 Add parameter description truncation to fit Discord's limits
 
 ## 4. Translation Layer - Argument Parsing
 
