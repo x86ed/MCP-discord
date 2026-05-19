@@ -10,11 +10,11 @@ import (
 // MockMCPServer is a mock MCP server for testing.
 // It simulates the MCP protocol over stdio.
 type MockMCPServer struct {
-	t       *testing.T
-	Tools   []MCPTool
-	Calls   []MCPToolCall
-	stdin   io.Reader
-	stdout  io.Writer
+	t      *testing.T
+	Tools  []MCPTool
+	Calls  []MCPToolCall
+	stdin  io.Reader
+	stdout io.Writer
 }
 
 // MCPTool represents an MCP tool definition.
