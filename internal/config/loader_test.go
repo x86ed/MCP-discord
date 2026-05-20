@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -158,5 +159,110 @@ func TestLoadFromSource_NoPathSpecified(t *testing.T) {
 	_, err := LoadFromSource("", "TEST_CONFIG_PATH", "")
 	if err == nil {
 		t.Error("LoadFromSource() should fail when no path is specified")
+	}
+}
+
+func TestInterpolateEnvVars_Success(t *testing.T) {
+	os.Setenv("TEST_TOKEN", "secret-token-123")
+	os.Setenv("TEST_GUILD", "guild-789")
+	defer os.Unsetenv("TEST_TOKEN")
+	defer os.Unsetenv("TEST_GUILD")
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test-config.json")
+
+	configJSON := `{
+		"discord": {
+			"token": "${TEST_TOKEN}",
+			"guildId": "${TEST_GUILD}"
+		},
+		"mcp": {
+			"command": "test"
+		}
+	}`
+
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Discord.Token != "secret-token-123" {
+		t.Errorf("Token = %q, want %q", cfg.Discord.Token, "secret-token-123")
+	}
+	if cfg.Discord.GuildID != "guild-789" {
+		t.Errorf("GuildID = %q, want %q", cfg.Discord.GuildID, "guild-789")
+	}
+}
+
+func TestInterpolateEnvVars_MissingVar(t *testing.T) {
+	os.Unsetenv("NONEXISTENT_VAR")
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test-config.json")
+
+	configJSON := `{
+		"discord": {
+			"token": "${NONEXISTENT_VAR}"
+		},
+		"mcp": {
+			"command": "test"
+		}
+	}`
+
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// The variable should remain unresolved
+	if !strings.Contains(cfg.Discord.Token, "${NONEXISTENT_VAR}") {
+		t.Errorf("Expected unresolved env var, got: %s", cfg.Discord.Token)
+	}
+
+	// Validation should catch it
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should fail for unresolved env var")
+	}
+}
+
+func TestLoad_ValidationFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "invalid-config.json")
+
+	// Config with empty token
+	configJSON := `{
+		"discord": {
+			"token": ""
+		},
+		"mcp": {
+			"command": "test",
+			"transport": "stdio"
+		}
+	}`
+
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// Validation should fail
+	err = cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should fail when token is empty")
+	}
+	if err != nil && !strings.Contains(err.Error(), "discord.token is required") {
+		t.Errorf("Expected token validation error, got: %v", err)
 	}
 }
