@@ -9,7 +9,7 @@ import (
 )
 
 func TestToolToSlashCommand_Comprehensive(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 
 	tests := []struct {
 		name        string
@@ -94,7 +94,7 @@ func TestToolToSlashCommand_Comprehensive(t *testing.T) {
 }
 
 func TestTranslateArguments_Comprehensive(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 
 	tests := []struct {
 		name        string
@@ -271,7 +271,7 @@ func TestTranslateArguments_Comprehensive(t *testing.T) {
 }
 
 func TestParametersToOptions_EdgeCases(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 
 	// Test with 26 parameters (exceeds Discord limit of 25)
 	tool := mcp.Tool{

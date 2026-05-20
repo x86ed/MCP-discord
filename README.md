@@ -92,6 +92,38 @@ Once the bot is running and connected to Discord, it will automatically register
 
 The bot discovers available tools from your MCP server at startup and registers them as Discord slash commands. Each tool's name, description, and parameters are automatically translated.
 
+### Parameter Descriptions
+
+The bot reads parameter descriptions from your MCP server's tool schema and displays them as hints in Discord's slash command UI. To ensure users see helpful parameter descriptions:
+
+**MCP Server Tool Schema Example:**
+```json
+{
+  "name": "get_weather",
+  "description": "Get current weather for a location",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City name or ZIP code"
+      },
+      "units": {
+        "type": "string",
+        "description": "Temperature units (celsius or fahrenheit)"
+      }
+    },
+    "required": ["location"]
+  }
+}
+```
+
+**Best Practices:**
+- Always include `description` fields for all parameters in your MCP tool schemas
+- Keep descriptions concise (under 100 characters) to fit Discord's limits
+- Be specific about expected formats (e.g., "Comma-separated list of IDs" for arrays)
+- The bot will log warnings if parameters are missing descriptions to help you identify issues
+
 ### Parameter Formats
 
 MCP tools use JSON Schema for parameter definitions. The bot translates these to Discord's option types:
@@ -325,6 +357,68 @@ GOOS=linux GOARCH=amd64 go build -o mcpdiscord-linux-amd64 ./cmd/mcpdiscord
 GOOS=darwin GOARCH=arm64 go build -o mcpdiscord-darwin-arm64 ./cmd/mcpdiscord
 GOOS=windows GOARCH=amd64 go build -o mcpdiscord-windows-amd64.exe ./cmd/mcpdiscord
 ```
+
+## Troubleshooting
+
+### Missing Parameter Descriptions in Discord
+
+**Symptom:** Slash command parameters show "No description" or generic hints like "(JSON object)" without context.
+
+**Cause:** Your MCP server's tool schema doesn't include `description` fields for parameters.
+
+**Solution:**
+1. Check your MCP server logs for warnings:
+   ```
+   WARN Parameter missing description tool=your_tool parameter=param_name
+   ```
+2. Update your MCP server to include descriptions in the tool schema (see "Parameter Descriptions" section above)
+3. Restart the bot to refresh command registrations
+
+**Example Fix:**
+```json
+// Before (missing description)
+{
+  "properties": {
+    "location": {
+      "type": "string"
+    }
+  }
+}
+
+// After (with description)
+{
+  "properties": {
+    "location": {
+      "type": "string",
+      "description": "City name or ZIP code"
+    }
+  }
+}
+```
+
+### Commands Not Updating
+
+**Symptom:** Changes to MCP tools don't appear in Discord.
+
+**Cause:** Discord caches slash commands.
+
+**Solution:**
+- **Guild commands** (development): Updates are instant
+- **Global commands** (production): Can take up to 1 hour to propagate
+- Restart the bot to force re-registration
+
+### Connection Errors
+
+**Symptom:** Bot fails to connect to MCP server.
+
+**Solution:**
+1. Verify the MCP server command/path is correct in your config
+2. Check MCP server logs for errors
+3. Ensure the MCP server supports stdio transport
+4. Test the MCP server independently:
+   ```bash
+   echo '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | your-mcp-command
+   ```
 
 ## Contributing
 
