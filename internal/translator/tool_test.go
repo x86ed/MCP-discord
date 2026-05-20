@@ -3,8 +3,9 @@ package translator
 import (
 	"testing"
 
-	"github.com/bwmarrin/discordgo"
 	"mcpdiscord/internal/mcp"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestToolToSlashCommand_Comprehensive(t *testing.T) {

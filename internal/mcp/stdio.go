@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -26,8 +27,9 @@ type StdioClient struct {
 	logger *slog.Logger
 
 	// Response handling
-	responses map[int64]chan *JSONRPCResponse
-	respMu    sync.Mutex
+	responses   map[int64]chan *JSONRPCResponse
+	respMu      sync.Mutex
+	readerReady chan struct{} // Signals when response reader is ready
 }
 
 // NewStdioClient creates a new stdio-based MCP client.
@@ -36,18 +38,19 @@ func NewStdioClient(cfg config.MCPConfig, logger *slog.Logger) *StdioClient {
 		logger = slog.Default()
 	}
 	return &StdioClient{
-		config:    cfg,
-		logger:    logger,
-		responses: make(map[int64]chan *JSONRPCResponse),
+		config:      cfg,
+		logger:      logger,
+		responses:   make(map[int64]chan *JSONRPCResponse),
+		readerReady: make(chan struct{}),
 	}
 }
 
 // Connect starts the MCP server subprocess and establishes communication.
 func (c *StdioClient) Connect(ctx context.Context) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if c.cmd != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("client already connected")
 	}
 
@@ -58,33 +61,38 @@ func (c *StdioClient) Connect(ctx context.Context) error {
 	// Create command
 	c.cmd = exec.CommandContext(ctx, c.config.Command, c.config.Args...)
 
-	// Set environment variables
+	// Set environment variables (inherit parent + add custom)
 	if len(c.config.Env) > 0 {
-		c.cmd.Env = make([]string, 0, len(c.config.Env))
+		c.cmd.Env = os.Environ() // Start with parent environment
 		for k, v := range c.config.Env {
 			c.cmd.Env = append(c.cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
+	// Otherwise use default (inherits parent environment automatically)
 
 	// Setup pipes
 	var err error
 	c.stdin, err = c.cmd.StdinPipe()
 	if err != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
 	c.stdout, err = c.cmd.StdoutPipe()
 	if err != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	c.stderr, err = c.cmd.StderrPipe()
 	if err != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
 
 	// Start process
 	if err := c.cmd.Start(); err != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("failed to start MCP server: %w", err)
 	}
 
@@ -94,6 +102,72 @@ func (c *StdioClient) Connect(ctx context.Context) error {
 	go c.readResponses()
 	go c.readStderr()
 
+	// Release mutex before calling initialize() to avoid deadlock
+	c.mu.Unlock()
+
+	// Wait for reader to be ready
+	<-c.readerReady
+
+	// Send initialize request (required by MCP protocol)
+	c.logger.Info("sending initialize request to MCP server")
+	if err := c.initialize(ctx); err != nil {
+		c.Close()
+		return fmt.Errorf("failed to initialize MCP server: %w", err)
+	}
+
+	return nil
+}
+
+// initialize sends the required initialize request to the MCP server.
+func (c *StdioClient) initialize(ctx context.Context) error {
+	c.logger.Info("initializing MCP server connection")
+
+	// Create initialize request with correct protocol version
+	req := NewRequest("initialize", map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"clientInfo": map[string]interface{}{
+			"name":    "mcpdiscord",
+			"version": "0.1.0",
+		},
+	})
+
+	c.logger.Info("sending initialize request")
+	// Send request and wait for response
+	resp, err := c.sendRequest(ctx, req)
+	if err != nil {
+		return fmt.Errorf("initialize request failed: %w", err)
+	}
+
+	c.logger.Info("received initialize response")
+	// Check for error
+	if err := CheckError(resp); err != nil {
+		return err
+	}
+
+	c.logger.Info("MCP server initialized successfully, sending initialized notification")
+
+	// Send initialized notification (required by MCP protocol)
+	// Notifications have no ID and expect no response
+	notification := &JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
+	}
+
+	data, err := EncodeRequest(notification)
+	if err != nil {
+		return fmt.Errorf("failed to encode initialized notification: %w", err)
+	}
+
+	c.mu.Lock()
+	_, err = c.stdin.Write(append(data, '\n'))
+	c.mu.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to send initialized notification: %w", err)
+	}
+
+	c.logger.Info("initialized notification sent, MCP server ready")
 	return nil
 }
 
@@ -204,13 +278,13 @@ func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JS
 	// Create response channel
 	respChan := make(chan *JSONRPCResponse, 1)
 	c.respMu.Lock()
-	c.responses[req.ID] = respChan
+	c.responses[*req.ID] = respChan
 	c.respMu.Unlock()
 
 	// Clean up channel after we're done
 	defer func() {
 		c.respMu.Lock()
-		delete(c.responses, req.ID)
+		delete(c.responses, *req.ID)
 		c.respMu.Unlock()
 	}()
 
@@ -218,6 +292,12 @@ func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JS
 	data, err := EncodeRequest(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.ID != nil {
+		c.logger.Info("sending JSON-RPC request", "method", req.Method, "id", *req.ID, "data", string(data))
+	} else {
+		c.logger.Info("sending JSON-RPC notification", "method", req.Method, "data", string(data))
 	}
 
 	c.mu.Lock()
@@ -232,25 +312,37 @@ func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JS
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
+	c.logger.Info("request sent, waiting for response", "id", *req.ID)
+
 	// Wait for response with timeout
 	select {
 	case resp := <-respChan:
 		return resp, nil
 	case <-ctx.Done():
 		return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
-	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("request timed out after 30 seconds")
+	case <-time.After(120 * time.Second):
+		return nil, fmt.Errorf("request timed out after 120 seconds")
 	}
 }
 
 // readResponses continuously reads JSON-RPC responses from stdout.
 func (c *StdioClient) readResponses() {
+	c.logger.Info("starting response reader goroutine")
 	scanner := bufio.NewScanner(c.stdout)
+
+	// Signal that reader is ready
+	close(c.readerReady)
+
+	// Log that we're about to start scanning
+	c.logger.Info("response reader: starting scan loop")
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
+
+		c.logger.Info("received response line", "data", string(line))
 
 		resp, err := DecodeResponse(line)
 		if err != nil {
@@ -258,21 +350,26 @@ func (c *StdioClient) readResponses() {
 			continue
 		}
 
+		c.logger.Info("decoded response", "id", resp.ID)
+
 		// Route response to waiting request
 		c.respMu.Lock()
 		respChan, ok := c.responses[resp.ID]
 		c.respMu.Unlock()
 
 		if ok {
+			c.logger.Info("routing response to waiting channel", "id", resp.ID)
 			respChan <- resp
 		} else {
 			c.logger.Warn("received response for unknown request ID", "id", resp.ID)
 		}
 	}
 
+	c.logger.Info("response reader: scan loop ended")
 	if err := scanner.Err(); err != nil {
 		c.logger.Error("error reading from MCP server stdout", "error", err)
 	}
+	c.logger.Info("response reader goroutine exiting")
 }
 
 // readStderr logs stderr output from the MCP server.

@@ -10,10 +10,11 @@ import (
 )
 
 func TestStdioClient_Lifecycle(t *testing.T) {
-	// Test with echo command for basic I/O
+	serverPath := testMCPServerPath(t)
+
 	cfg := config.MCPConfig{
-		Command: "echo",
-		Args:    []string{"test"},
+		Command: serverPath,
+		Args:    []string{},
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	client := NewStdioClient(cfg, logger)

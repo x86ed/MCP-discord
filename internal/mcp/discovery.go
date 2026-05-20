@@ -30,8 +30,8 @@ func NewDiscoveryService(client Client, logger *slog.Logger) *DiscoveryService {
 func (d *DiscoveryService) DiscoverTools(ctx context.Context) ([]Tool, error) {
 	d.logger.Info("starting tool discovery")
 
-	// Set 30 second timeout for tool listing
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Set 120 second timeout for tool listing
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	// List tools from MCP server

@@ -9,10 +9,12 @@ func TestRequestIDCounter(t *testing.T) {
 	ids := make(map[int64]bool)
 	for i := 0; i < 100; i++ {
 		req := NewRequest("test", nil)
-		if ids[req.ID] {
-			t.Errorf("Duplicate request ID: %d", req.ID)
+		if req.ID != nil {
+			if ids[*req.ID] {
+				t.Errorf("Duplicate request ID: %d", *req.ID)
+			}
+			ids[*req.ID] = true
 		}
-		ids[req.ID] = true
 	}
 
 	if len(ids) != 100 {

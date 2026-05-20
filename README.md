@@ -283,7 +283,7 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 
 ## Project Structure
 
-```
+```md
 cmd/mcpdiscord/         # Application entry point
 internal/
   bot/                  # Discord bot logic
