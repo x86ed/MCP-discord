@@ -48,6 +48,7 @@ package translator
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -64,11 +65,18 @@ type Translator interface {
 }
 
 // DefaultTranslator implements the Translator interface.
-type DefaultTranslator struct{}
+type DefaultTranslator struct{
+	logger *slog.Logger
+}
 
 // New creates a new DefaultTranslator.
-func New() *DefaultTranslator {
-	return &DefaultTranslator{}
+func New(logger *slog.Logger) *DefaultTranslator {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &DefaultTranslator{
+		logger: logger,
+	}
 }
 
 // ToolToSlashCommand converts an MCP tool to a Discord slash command.
@@ -91,7 +99,7 @@ func (t *DefaultTranslator) ToolToSlashCommand(tool mcp.Tool) (*discordgo.Applic
 	}
 
 	// Convert parameters to Discord options
-	options, err := parametersToOptions(tool.InputSchema)
+	options, err := t.parametersToOptions(tool)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert parameters: %w", err)
 	}
@@ -125,7 +133,8 @@ func SanitizeToolName(name string) string {
 }
 
 // parametersToOptions converts MCP input schema properties to Discord options.
-func parametersToOptions(schema mcp.InputSchema) ([]*discordgo.ApplicationCommandOption, error) {
+func (t *DefaultTranslator) parametersToOptions(tool mcp.Tool) ([]*discordgo.ApplicationCommandOption, error) {
+	schema := tool.InputSchema
 	if len(schema.Properties) == 0 {
 		return nil, nil
 	}
@@ -147,6 +156,16 @@ func parametersToOptions(schema mcp.InputSchema) ([]*discordgo.ApplicationComman
 
 		// Build description with hint for arrays/objects
 		description := prop.Description
+		
+		// Log warning if description is missing or empty
+		if description == "" || strings.TrimSpace(description) == "" {
+			t.logger.Warn("Parameter missing description",
+				"tool", tool.Name,
+				"parameter", name,
+				"type", prop.Type,
+			)
+		}
+		
 		if hint != "" {
 			if description != "" {
 				description = description + " " + hint
