@@ -257,6 +257,11 @@ func (b *DiscordBot) handleCommand(s DiscordSession, i *discordgo.InteractionCre
 }
 
 // formatResult converts an MCP tool result into a Discord response.
+//
+// Output detection: tools may return either structured JSON (the `nearby`
+// tool) or rendered Markdown (the `airport_tasks` tool). We wrap JSON in a
+// code fence so Discord renders it as a literal block, but pass Markdown
+// through so Discord renders links, bold, etc. naturally inside the embed.
 func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Response {
 	// Determine color based on error status
 	color := 0x00FF00 // Green for success
@@ -277,15 +282,17 @@ func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Resp
 
 	content := strings.TrimSpace(contentBuilder.String())
 
-	// Truncate if exceeds Discord limit (4096 chars for embed description)
+	// Wrap as JSON only if the content *starts* with { or [ — markdown
+	// like "1. Catch 2 [BUR](...) ..." also contains [ but isn't JSON.
+	if looksLikeJSON(content) {
+		content = "```json\n" + content + "\n```"
+	}
+
+	// Truncate if exceeds Discord embed description limit (4096 chars).
+	// Done after any wrapping so we don't accidentally orphan a code fence.
 	const maxLength = 4096
 	if len(content) > maxLength {
 		content = content[:maxLength-20] + "\n\n...(truncated)"
-	}
-
-	// Format structured data with code blocks
-	if strings.Contains(content, "{") || strings.Contains(content, "[") {
-		content = "```json\n" + content + "\n```"
 	}
 
 	return &Response{
@@ -296,6 +303,24 @@ func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Resp
 		},
 		Ephemeral: false,
 	}
+}
+
+// looksLikeJSON returns true if the content's first non-whitespace byte is
+// '{' or '[', indicating a JSON object or array. This is a lightweight
+// heuristic that avoids false positives from markdown link syntax like
+// "[BUR](https://...)" which also contains '[' but is plainly not JSON.
+func looksLikeJSON(s string) bool {
+	for _, r := range s {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case '{', '[':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // sendResponse sends a response to a Discord interaction.

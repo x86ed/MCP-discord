@@ -237,7 +237,7 @@ func TestValidateCommandCount(t *testing.T) {
 }
 
 func TestTranslateArguments(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 
 	// Test with a simple tool schema
 	tool := mcp.Tool{
@@ -269,7 +269,7 @@ func TestTranslateArguments(t *testing.T) {
 }
 
 func TestToolToSlashCommand_EmptyDescription(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 	tool := mcp.Tool{
 		Name:        "test",
 		Description: "", // Empty description
@@ -289,7 +289,7 @@ func TestToolToSlashCommand_EmptyDescription(t *testing.T) {
 }
 
 func TestToolToSlashCommand_LongDescription(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 	longDesc := "This is a very long description that exceeds the Discord limit of 100 characters and should be truncated properly"
 	tool := mcp.Tool{
 		Name:        "test",
@@ -314,17 +314,21 @@ func TestToolToSlashCommand_LongDescription(t *testing.T) {
 }
 
 func TestParametersToOptions_BooleanType(t *testing.T) {
-	schema := mcp.InputSchema{
-		Type: "object",
-		Properties: map[string]mcp.PropertySchema{
-			"enabled": {
-				Type:        "boolean",
-				Description: "Enable feature",
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"enabled": {
+					Type:        "boolean",
+					Description: "Enable feature",
+				},
 			},
 		},
 	}
 
-	options, err := parametersToOptions(schema)
+	options, err := trans.parametersToOptions(tool)
 	if err != nil {
 		t.Fatalf("parametersToOptions failed: %v", err)
 	}
@@ -335,17 +339,21 @@ func TestParametersToOptions_BooleanType(t *testing.T) {
 }
 
 func TestParametersToOptions_IntegerType(t *testing.T) {
-	schema := mcp.InputSchema{
-		Type: "object",
-		Properties: map[string]mcp.PropertySchema{
-			"count": {
-				Type:        "integer",
-				Description: "Count value",
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"count": {
+					Type:        "integer",
+					Description: "Count value",
+				},
 			},
 		},
 	}
 
-	options, err := parametersToOptions(schema)
+	options, err := trans.parametersToOptions(tool)
 	if err != nil {
 		t.Fatalf("parametersToOptions failed: %v", err)
 	}
@@ -356,17 +364,21 @@ func TestParametersToOptions_IntegerType(t *testing.T) {
 }
 
 func TestParametersToOptions_ArrayType(t *testing.T) {
-	schema := mcp.InputSchema{
-		Type: "object",
-		Properties: map[string]mcp.PropertySchema{
-			"items": {
-				Type:        "array",
-				Description: "List of items",
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"items": {
+					Type:        "array",
+					Description: "List of items",
+				},
 			},
 		},
 	}
 
-	options, err := parametersToOptions(schema)
+	options, err := trans.parametersToOptions(tool)
 	if err != nil {
 		t.Fatalf("parametersToOptions failed: %v", err)
 	}
@@ -375,7 +387,6 @@ func TestParametersToOptions_ArrayType(t *testing.T) {
 		t.Fatalf("Expected 1 option, got %d", len(options))
 	}
 }
-
 
 func TestMapTypeToDiscord_AllTypes(t *testing.T) {
 	tests := []struct {
@@ -404,4 +415,3 @@ func TestMapTypeToDiscord_AllTypes(t *testing.T) {
 		})
 	}
 }
-
