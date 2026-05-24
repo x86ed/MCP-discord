@@ -51,8 +51,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
 	"mcpdiscord/internal/mcp"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 // Translator converts between MCP tools and Discord slash commands.
@@ -65,7 +66,7 @@ type Translator interface {
 }
 
 // DefaultTranslator implements the Translator interface.
-type DefaultTranslator struct{
+type DefaultTranslator struct {
 	logger *slog.Logger
 }
 
@@ -156,7 +157,7 @@ func (t *DefaultTranslator) parametersToOptions(tool mcp.Tool) ([]*discordgo.App
 
 		// Build description with hint for arrays/objects
 		description := prop.Description
-		
+
 		// Log warning if description is missing or empty
 		if description == "" || strings.TrimSpace(description) == "" {
 			t.logger.Warn("Parameter missing description",
@@ -165,7 +166,7 @@ func (t *DefaultTranslator) parametersToOptions(tool mcp.Tool) ([]*discordgo.App
 				"type", prop.Type,
 			)
 		}
-		
+
 		if hint != "" {
 			if description != "" {
 				description = description + " " + hint
@@ -304,4 +305,3 @@ func translateValue(mcpType string, opt *discordgo.ApplicationCommandInteraction
 		return opt.StringValue(), nil
 	}
 }
-

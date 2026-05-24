@@ -177,7 +177,7 @@ func TestParameterDescription_LoggingForMissing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
 		Level: slog.LevelWarn,
 	}))
-	
+
 	trans := New(logger)
 	tool := mcp.Tool{
 		Name: "test_tool",
@@ -202,20 +202,20 @@ func TestParameterDescription_LoggingForMissing(t *testing.T) {
 	}
 
 	logOutput := logBuf.String()
-	
+
 	// Verify warning was logged for missing description
 	if !strings.Contains(logOutput, "Parameter missing description") {
 		t.Error("Expected warning log for missing description")
 	}
-	
+
 	if !strings.Contains(logOutput, "test_tool") {
 		t.Error("Expected tool name in log output")
 	}
-	
+
 	if !strings.Contains(logOutput, "param_no_desc") {
 		t.Error("Expected parameter name in log output")
 	}
-	
+
 	// Verify only one warning (not for param_with_desc)
 	warnCount := strings.Count(logOutput, "Parameter missing description")
 	if warnCount != 1 {
