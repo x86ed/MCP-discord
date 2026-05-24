@@ -388,7 +388,6 @@ func TestParametersToOptions_ArrayType(t *testing.T) {
 	}
 }
 
-
 func TestMapTypeToDiscord_AllTypes(t *testing.T) {
 	tests := []struct {
 		inputType    string
@@ -416,4 +415,3 @@ func TestMapTypeToDiscord_AllTypes(t *testing.T) {
 		})
 	}
 }
-
