@@ -327,13 +327,15 @@ func looksLikeJSON(s string) bool {
 func (b *DiscordBot) sendResponse(s DiscordSession, i *discordgo.InteractionCreate, resp *Response) {
 	var embeds []*discordgo.MessageEmbed
 	if resp.Embed != nil {
-		embeds = []*discordgo.MessageEmbed{
-			{
-				Title:       resp.Embed.Title,
-				Description: resp.Embed.Description,
-				Color:       resp.Embed.Color,
-			},
+		embed := &discordgo.MessageEmbed{
+			Title:       resp.Embed.Title,
+			Description: resp.Embed.Description,
+			Color:       resp.Embed.Color,
 		}
+		if resp.Embed.ImageURL != "" {
+			embed.Image = &discordgo.MessageEmbedImage{URL: resp.Embed.ImageURL}
+		}
+		embeds = []*discordgo.MessageEmbed{embed}
 	}
 
 	_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
