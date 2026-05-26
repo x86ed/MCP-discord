@@ -1052,6 +1052,41 @@ func TestDiscordBot_SendResponse(t *testing.T) {
 	}
 }
 
+func TestDiscordBot_SendResponse_WithImage(t *testing.T) {
+	mockSession := NewMockDiscordSession()
+
+	bot := &DiscordBot{
+		session: mockSession,
+		logger:  slog.Default(),
+	}
+
+	interaction := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			ID: "interaction-123",
+		},
+	}
+
+	resp := &Response{
+		Embed: &Embed{
+			Title:       "Test",
+			Description: "Description",
+			Color:       0x00FF00,
+			ImageURL:    "https://example.com/image.png",
+		},
+	}
+
+	bot.sendResponse(mockSession, interaction, resp)
+
+	if mockSession.LastWebhookEdit == nil || mockSession.LastWebhookEdit.Embeds == nil || len(*mockSession.LastWebhookEdit.Embeds) == 0 {
+		t.Fatal("Expected embed in response")
+	}
+
+	embed := (*mockSession.LastWebhookEdit.Embeds)[0]
+	if embed.Image == nil || embed.Image.URL != "https://example.com/image.png" {
+		t.Fatalf("Expected image URL to be set, got %+v", embed.Image)
+	}
+}
+
 func TestDiscordBot_SendError(t *testing.T) {
 	mockSession := NewMockDiscordSession()
 
