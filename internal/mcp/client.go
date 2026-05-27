@@ -160,7 +160,6 @@ type ResourceLink struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 
-
 // Request represents an MCP protocol request message.
 type Request struct {
 	// JSONRPC is the JSON-RPC version (always "2.0")
