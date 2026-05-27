@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"mcpdiscord/internal/config"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var markdownImagePattern = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
 
 // DiscordBot implements the Bot interface using discordgo.
 type DiscordBot struct {
@@ -281,6 +284,14 @@ func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Resp
 	}
 
 	content := strings.TrimSpace(contentBuilder.String())
+	imageURL := extractImageFromResourceLinks(result.Content)
+
+	// Discord does not render markdown image syntax in embeds. Convert the
+	// first markdown image to the native embed image field and strip all
+	// markdown image tags from description text.
+	if !looksLikeJSON(content) && imageURL == "" {
+		content, imageURL = extractMarkdownImage(content)
+	}
 
 	// Wrap as JSON only if the content *starts* with { or [ — markdown
 	// like "1. Catch 2 [BUR](...) ..." also contains [ but isn't JSON.
@@ -295,14 +306,103 @@ func (b *DiscordBot) formatResult(toolName string, result *mcp.ToolResult) *Resp
 		content = content[:maxLength-20] + "\n\n...(truncated)"
 	}
 
+	if imageURL != "" && b.logger != nil {
+		b.logger.Debug("detected response image", "tool", toolName, "image_url", imageURL)
+	}
+
 	return &Response{
 		Embed: &Embed{
 			Title:       title,
 			Description: content,
 			Color:       color,
+			ImageURL:    imageURL,
 		},
 		Ephemeral: false,
 	}
+}
+
+// extractMarkdownImage removes markdown image tags from text and returns the
+// cleaned text plus the first image URL for Discord embed image rendering.
+func extractMarkdownImage(s string) (string, string) {
+	matches := markdownImagePattern.FindAllStringSubmatch(s, -1)
+	if len(matches) == 0 {
+		return strings.TrimSpace(s), ""
+	}
+
+	imageURL := matches[0][1]
+	cleaned := markdownImagePattern.ReplaceAllString(s, "")
+
+	return strings.TrimSpace(cleaned), imageURL
+}
+
+func extractImageFromResourceLinks(blocks []mcp.ContentBlock) string {
+	for _, block := range blocks {
+		if url := imageURLFromInlineResourceBlock(block); url != "" {
+			return url
+		}
+		if url := imageURLFromResourceLink(block.ResourceLink); url != "" {
+			return url
+		}
+		if url := imageURLFromResourceLink(block.ResorceLink); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func imageURLFromInlineResourceBlock(block mcp.ContentBlock) string {
+	if block.Type != "resource_link" && block.Type != "resource" {
+		return ""
+	}
+
+	return imageURLFromResourceLink(&mcp.ResourceLink{
+		URL:      block.URL,
+		URI:      block.URI,
+		Href:     block.Href,
+		MimeType: block.MimeType,
+	})
+}
+
+func imageURLFromResourceLink(link *mcp.ResourceLink) string {
+	if link == nil {
+		return ""
+	}
+
+	url := firstNonEmpty(link.URL, link.URI, link.Href)
+	if url == "" {
+		return ""
+	}
+
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return ""
+	}
+
+	if strings.HasPrefix(strings.ToLower(link.MimeType), "image/") {
+		return url
+	}
+
+	lowerURL := strings.ToLower(url)
+	switch {
+	case strings.Contains(lowerURL, ".png"),
+		strings.Contains(lowerURL, ".jpg"),
+		strings.Contains(lowerURL, ".jpeg"),
+		strings.Contains(lowerURL, ".gif"),
+		strings.Contains(lowerURL, ".webp"),
+		strings.Contains(lowerURL, ".bmp"),
+		strings.Contains(lowerURL, ".svg"):
+		return url
+	default:
+		return ""
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // looksLikeJSON returns true if the content's first non-whitespace byte is

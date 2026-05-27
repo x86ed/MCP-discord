@@ -152,3 +152,146 @@ func TestFormatResultMultipleBlocks(t *testing.T) {
 		t.Error("Expected all content blocks in description")
 	}
 }
+
+func TestFormatResultMarkdownImageToEmbedImage(t *testing.T) {
+	result := &mcp.ToolResult{
+		Content: []mcp.ContentBlock{
+			{
+				Type: "text",
+				Text: "Here is the chart:\n\n![chart](https://example.com/chart.png)",
+			},
+		},
+		IsError: false,
+	}
+
+	bot := &DiscordBot{}
+	resp := bot.formatResult("test_tool", result)
+
+	if resp.Embed == nil {
+		t.Fatal("Expected embed to be created")
+	}
+
+	if resp.Embed.ImageURL != "https://example.com/chart.png" {
+		t.Fatalf("Expected image URL to be extracted, got %q", resp.Embed.ImageURL)
+	}
+
+	if strings.Contains(resp.Embed.Description, "![chart]") {
+		t.Fatalf("Expected markdown image syntax to be removed from description, got %q", resp.Embed.Description)
+	}
+}
+
+func TestFormatResultMarkdownImageJSONUnchanged(t *testing.T) {
+	result := &mcp.ToolResult{
+		Content: []mcp.ContentBlock{
+			{
+				Type: "text",
+				Text: `{"note":"![chart](https://example.com/chart.png)"}`,
+			},
+		},
+		IsError: false,
+	}
+
+	bot := &DiscordBot{}
+	resp := bot.formatResult("test_tool", result)
+
+	if resp.Embed == nil {
+		t.Fatal("Expected embed to be created")
+	}
+
+	if resp.Embed.ImageURL != "" {
+		t.Fatalf("Expected JSON payload to skip markdown extraction, got %q", resp.Embed.ImageURL)
+	}
+
+	if !strings.Contains(resp.Embed.Description, "```json") {
+		t.Fatalf("Expected JSON formatting to be preserved, got %q", resp.Embed.Description)
+	}
+}
+
+func TestFormatResultResourceLinkImageToEmbedImage(t *testing.T) {
+	result := &mcp.ToolResult{
+		Content: []mcp.ContentBlock{
+			{
+				Type: "resource",
+				ResourceLink: &mcp.ResourceLink{
+					URL:      "https://example.com/from-resource-link.png",
+					MimeType: "image/png",
+				},
+			},
+			{
+				Type: "text",
+				Text: "Image provided by resourceLink",
+			},
+		},
+		IsError: false,
+	}
+
+	bot := &DiscordBot{}
+	resp := bot.formatResult("test_tool", result)
+
+	if resp.Embed == nil {
+		t.Fatal("Expected embed to be created")
+	}
+
+	if resp.Embed.ImageURL != "https://example.com/from-resource-link.png" {
+		t.Fatalf("Expected image URL from resourceLink, got %q", resp.Embed.ImageURL)
+	}
+}
+
+func TestFormatResultResorceLinkImageToEmbedImage(t *testing.T) {
+	result := &mcp.ToolResult{
+		Content: []mcp.ContentBlock{
+			{
+				Type: "resource",
+				ResorceLink: &mcp.ResourceLink{
+					URI:      "https://example.com/from-resorce-link.jpg",
+					MimeType: "image/jpeg",
+				},
+			},
+			{
+				Type: "text",
+				Text: "Image provided by resorceLink",
+			},
+		},
+		IsError: false,
+	}
+
+	bot := &DiscordBot{}
+	resp := bot.formatResult("test_tool", result)
+
+	if resp.Embed == nil {
+		t.Fatal("Expected embed to be created")
+	}
+
+	if resp.Embed.ImageURL != "https://example.com/from-resorce-link.jpg" {
+		t.Fatalf("Expected image URL from resorceLink, got %q", resp.Embed.ImageURL)
+	}
+}
+
+func TestFormatResultInlineResourceLinkImageToEmbedImage(t *testing.T) {
+	result := &mcp.ToolResult{
+		Content: []mcp.ContentBlock{
+			{
+				Type:     "resource_link",
+				MimeType: "image/webp",
+				URI:      "https://skydex.info/img/airports/KLAX.webp",
+				Name:     "LAX",
+			},
+			{
+				Type: "text",
+				Text: "Airport image",
+			},
+		},
+		IsError: false,
+	}
+
+	bot := &DiscordBot{}
+	resp := bot.formatResult("test_tool", result)
+
+	if resp.Embed == nil {
+		t.Fatal("Expected embed to be created")
+	}
+
+	if resp.Embed.ImageURL != "https://skydex.info/img/airports/KLAX.webp" {
+		t.Fatalf("Expected image URL from inline resource_link, got %q", resp.Embed.ImageURL)
+	}
+}
