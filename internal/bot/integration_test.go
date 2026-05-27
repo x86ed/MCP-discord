@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bwmarrin/discordgo"
 	"mcpdiscord/internal/config"
 	"mcpdiscord/internal/mcp"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 // ===== MOCK TRANSLATOR =====
@@ -534,10 +535,10 @@ func TestDiscordBot_Start_OpenError(t *testing.T) {
 	mockSession.OpenError = errors.New("connection failed")
 
 	bot := &DiscordBot{
-		config:     config.DiscordConfig{Token: "test"},
-		session:    mockSession,
-		logger:     slog.Default(),
-		commands:   make([]*discordgo.ApplicationCommand, 0),
+		config:       config.DiscordConfig{Token: "test"},
+		session:      mockSession,
+		logger:       slog.Default(),
+		commands:     make([]*discordgo.ApplicationCommand, 0),
 		commandTools: make(map[string]mcp.Tool),
 	}
 
@@ -555,7 +556,7 @@ func TestDiscordBot_Start_NoUser(t *testing.T) {
 	mockSession := NewMockDiscordSession()
 	// Don't set user, so GetUser returns nil
 	mockSession.UserID = ""
-	
+
 	bot := &DiscordBot{
 		config:       config.DiscordConfig{Token: "test"},
 		session:      mockSession,
@@ -577,7 +578,6 @@ func TestDiscordBot_Start_NoUser(t *testing.T) {
 		t.Errorf("Expected empty userID, got %q", bot.userID)
 	}
 }
-
 
 func TestDiscordBot_Stop(t *testing.T) {
 	mockSession := NewMockDiscordSession()
@@ -682,7 +682,7 @@ func TestDiscordBot_RegisterCommands_DiscoveryError(t *testing.T) {
 
 func TestDiscordBot_DeregisterCommands(t *testing.T) {
 	mockSession := NewMockDiscordSession()
-	
+
 	// Pre-populate with existing commands
 	mockSession.Commands = []*discordgo.ApplicationCommand{
 		{ID: "cmd-1", Name: "command1"},
@@ -926,7 +926,7 @@ func TestDiscordBot_RegisterCommands_TranslationError(t *testing.T) {
 
 func TestDiscordBot_RegisterCommands_TooManyTools(t *testing.T) {
 	mockSession := NewMockDiscordSession()
-	
+
 	// Create 101 tools to exceed Discord's limit of 100
 	tools := make([]mcp.Tool, 101)
 	for i := 0; i < 101; i++ {
@@ -936,7 +936,7 @@ func TestDiscordBot_RegisterCommands_TooManyTools(t *testing.T) {
 			InputSchema: mcp.InputSchema{Type: "object"},
 		}
 	}
-	
+
 	mockClient := &MockMCPClient{
 		ListToolsData: tools,
 	}
@@ -1351,7 +1351,7 @@ func TestNewDiscordBot_InvalidToken(t *testing.T) {
 	mockDiscovery := mcp.NewDiscoveryService(mockClient, nil)
 
 	bot, err := NewDiscordBot(cfg, mockClient, mockTranslator, mockDiscovery, slog.Default())
-	
+
 	// Empty token should still create a bot, but may have issues later
 	// The actual validation happens on Open()
 	if bot == nil && err != nil {
@@ -1367,20 +1367,19 @@ func TestNewDiscordBot_NilLogger(t *testing.T) {
 	mockDiscovery := mcp.NewDiscoveryService(mockClient, nil)
 
 	bot, err := NewDiscordBot(cfg, mockClient, mockTranslator, mockDiscovery, nil)
-	
+
 	if err != nil {
 		t.Fatalf("Expected no error with nil logger, got %v", err)
 	}
-	
+
 	if bot == nil {
 		t.Fatal("Expected bot to be created")
 	}
-	
+
 	if bot.logger == nil {
 		t.Error("Expected logger to be set (should use slog.Default())")
 	}
 }
-
 
 func TestDiscordBot_OnReady(t *testing.T) {
 	mockSession := NewMockDiscordSession()
@@ -1466,7 +1465,6 @@ func TestDiscordBot_HandleReady_RegisterCommandsError(t *testing.T) {
 		t.Errorf("Expected 0 CreateCommand calls on error, got %d", mockSession.CreateCommandCalls)
 	}
 }
-
 
 func TestDiscordBot_OnInteractionCreate(t *testing.T) {
 	mockSession := NewMockDiscordSession()
@@ -1888,4 +1886,3 @@ func TestDiscordBot_HandleCommand_MCPErrorResult(t *testing.T) {
 		t.Errorf("Expected 1 EditResponse call, got %d", mockSession.EditResponseCalls)
 	}
 }
-

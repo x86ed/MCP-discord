@@ -8,6 +8,7 @@ The change is intentionally minimal:
 
 - Added one optional field on the bot embed model: `ImageURL`.
 - Mapped `ImageURL` to Discord's embed image field at send time.
+- Added markdown image conversion so `![alt](url)` is converted to Discord embed image metadata (not left as markdown in description).
 - Added integration coverage to verify the webhook payload includes the image URL when provided.
 
 ## Why This Was Needed
@@ -38,19 +39,63 @@ In `sendResponse(...)`, embed construction now includes:
 
 This keeps image handling localized to transport formatting and avoids changing command execution flow.
 
-### 3. Test Coverage
+### 3. Markdown Image Normalization
+
+File: `internal/bot/session.go`
+
+In `formatResult(...)`, markdown image syntax in text results is normalized for Discord:
+
+- Extract first markdown image URL from `![alt](https://...)`.
+- Strip markdown image tags from embed description text.
+- Set extracted URL on `Response.Embed.ImageURL` so Discord receives it via `MessageEmbedImage`.
+
+Rationale:
+
+- Discord embeds do not render markdown image syntax inline in embed description.
+- The correct Discord-specific method is the native embed image field.
+
+### 4. ResourceLink/ResorceLink Image Passing (Preferred)
+
+Files: `internal/mcp/client.go`, `internal/bot/session.go`
+
+The formatter now prefers image URLs from MCP content resource link metadata:
+
+- `content[i].resourceLink`
+- `content[i].resorceLink` (compatibility for misspelled legacy field)
+
+Behavior:
+
+- First valid HTTP(S) image URL from resource link metadata is promoted to `Response.Embed.ImageURL`.
+- Valid image detection uses `mimeType` starting with `image/`, with file-extension fallback.
+- Markdown `![...](...)` extraction is now fallback-only when no resource link image is present.
+
+This matches the intended MCP path where images are carried in resource link content metadata.
+
+### 5. Test Coverage
 
 File: `internal/bot/integration_test.go`
 
 Added:
 
 - `TestDiscordBot_SendResponse_WithImage`
+- `TestFormatResultMarkdownImageToEmbedImage`
+- `TestFormatResultMarkdownImageJSONUnchanged`
+- `TestFormatResultResourceLinkImageToEmbedImage`
+- `TestFormatResultResorceLinkImageToEmbedImage`
 
 This test verifies:
 
 - `InteractionResponseEdit` receives an embed.
 - Embed image is present.
 - Image URL matches the value supplied in `Response.Embed.ImageURL`.
+
+Additional formatter tests verify:
+
+- Markdown image tokens are removed from description text.
+- First markdown image URL is promoted to embed image metadata.
+- JSON output detection/formatting behavior is unchanged.
+- Resource link metadata is preferred for image extraction.
+- Both `resourceLink` and `resorceLink` fields are supported.
 
 ## Compatibility and Risk
 
