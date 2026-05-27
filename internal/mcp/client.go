@@ -122,8 +122,43 @@ type ContentBlock struct {
 
 	// Text contains the textual content.
 	Text string `json:"text,omitempty"`
+
+	// URL is used by inline resource_link content blocks.
+	URL string `json:"url,omitempty"`
+
+	// URI is used by inline resource_link content blocks.
+	URI string `json:"uri,omitempty"`
+
+	// Href is used by some inline resource link implementations.
+	Href string `json:"href,omitempty"`
+
+	// MimeType is used by inline resource_link content blocks.
+	MimeType string `json:"mimeType,omitempty"`
+
+	// Name is optional metadata for inline resource_link content blocks.
+	Name string `json:"name,omitempty"`
+
+	// ResourceLink contains a linked resource descriptor from MCP content.
+	ResourceLink *ResourceLink `json:"resourceLink,omitempty"`
+
+	// ResorceLink supports servers that emit this misspelled legacy field.
+	ResorceLink *ResourceLink `json:"resorceLink,omitempty"`
 }
 
+// ResourceLink references an external resource returned by an MCP tool.
+type ResourceLink struct {
+	// URL is a direct HTTP(S) resource URL.
+	URL string `json:"url,omitempty"`
+
+	// URI is a generic URI form used by some MCP servers.
+	URI string `json:"uri,omitempty"`
+
+	// Href is an alternate link field used by some implementations.
+	Href string `json:"href,omitempty"`
+
+	// MimeType describes the resource content type.
+	MimeType string `json:"mimeType,omitempty"`
+}
 
 // Request represents an MCP protocol request message.
 type Request struct {

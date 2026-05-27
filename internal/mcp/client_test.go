@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -215,6 +216,77 @@ func TestTruncateDescription(t *testing.T) {
 				t.Errorf("Result exceeds 100 characters: %d", len(result))
 			}
 		})
+	}
+}
+
+func TestToolResultDecode_ResourceLinkFields(t *testing.T) {
+	payload := []byte(`{
+		"content": [
+			{
+				"type": "resource",
+				"resourceLink": {
+					"url": "https://example.com/a.png",
+					"mimeType": "image/png"
+				}
+			},
+			{
+				"type": "resource",
+				"resorceLink": {
+					"uri": "https://example.com/b.jpg",
+					"mimeType": "image/jpeg"
+				}
+			}
+		]
+	}`)
+
+	var result ToolResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("failed to decode tool result: %v", err)
+	}
+
+	if len(result.Content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(result.Content))
+	}
+
+	if result.Content[0].ResourceLink == nil || result.Content[0].ResourceLink.URL != "https://example.com/a.png" {
+		t.Fatalf("expected resourceLink URL to decode, got %+v", result.Content[0].ResourceLink)
+	}
+
+	if result.Content[1].ResorceLink == nil || result.Content[1].ResorceLink.URI != "https://example.com/b.jpg" {
+		t.Fatalf("expected resorceLink URI to decode, got %+v", result.Content[1].ResorceLink)
+	}
+}
+
+func TestToolResultDecode_InlineResourceLinkFields(t *testing.T) {
+	payload := []byte(`{
+		"content": [
+			{
+				"type": "resource_link",
+				"mimeType": "image/webp",
+				"uri": "https://skydex.info/img/airports/KLAX.webp",
+				"name": "LAX"
+			}
+		]
+	}`)
+
+	var result ToolResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("failed to decode tool result: %v", err)
+	}
+
+	if len(result.Content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(result.Content))
+	}
+
+	block := result.Content[0]
+	if block.Type != "resource_link" {
+		t.Fatalf("expected type resource_link, got %q", block.Type)
+	}
+	if block.MimeType != "image/webp" {
+		t.Fatalf("expected mimeType image/webp, got %q", block.MimeType)
+	}
+	if block.URI != "https://skydex.info/img/airports/KLAX.webp" {
+		t.Fatalf("expected URI to decode, got %q", block.URI)
 	}
 }
 

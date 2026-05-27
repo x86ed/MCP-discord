@@ -98,6 +98,9 @@ type Embed struct {
 	// Color is the sidebar color (0x for hex colors)
 	Color int
 
+	// ImageURL is an optional image displayed in the embed.
+	ImageURL string
+
 	// Fields contains additional structured data
 	Fields []EmbedField
 }
@@ -108,4 +111,3 @@ type EmbedField struct {
 	Value  string
 	Inline bool
 }
-
