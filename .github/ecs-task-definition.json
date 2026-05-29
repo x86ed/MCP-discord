@@ -1,0 +1,37 @@
+{
+  "family": "mcpdiscord-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/mcpdiscord-ecs-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/mcpdiscord-ecs-task-role",
+  "ephemeralStorage": {
+    "sizeInGiB": 21
+  },
+  "containerDefinitions": [
+    {
+      "name": "mcpdiscord",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcpdiscord:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "DISCORD_BOT_TOKEN",
+          "value": "REPLACE_WITH_RUNTIME_SECRET"
+        },
+        {
+          "name": "MCP_CONFIG_JSON",
+          "value": ""
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/mcpdiscord",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 // envVarPattern matches ${VAR_NAME} syntax in configuration values
@@ -18,10 +19,28 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
+	return loadFromJSONBytes(data, "file")
+}
+
+// LoadFromJSON loads configuration from raw JSON content.
+// It parses JSON and interpolates environment variables.
+func LoadFromJSON(raw string) (*Config, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, fmt.Errorf("configuration JSON is empty")
+	}
+
+	return loadFromJSONBytes([]byte(raw), "environment variable")
+}
+
+func loadFromJSONBytes(data []byte, source string) (*Config, error) {
+	if source == "" {
+		source = "configuration"
+	}
+
 	// First unmarshal to get raw structure
 	var rawConfig map[string]interface{}
 	if err := json.Unmarshal(data, &rawConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse config JSON from %s: %w", source, err)
 	}
 
 	// Interpolate environment variables
@@ -30,12 +49,12 @@ func Load(path string) (*Config, error) {
 	// Marshal back to JSON and unmarshal into typed config
 	interpolatedJSON, err := json.Marshal(interpolated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to re-marshal config: %w", err)
+		return nil, fmt.Errorf("failed to re-marshal config from %s: %w", source, err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(interpolatedJSON, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config into struct: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal config from %s into struct: %w", source, err)
 	}
 
 	return &cfg, nil
@@ -93,4 +112,20 @@ func LoadFromSource(configPath, envVarName, defaultPath string) (*Config, error)
 	}
 
 	return Load(path)
+}
+
+// LoadFromJSONOrSource loads configuration with priority:
+// jsonEnvVar > flag > path env var > default file path.
+// - configPath: path from CLI flag
+// - pathEnvVarName: environment variable name to check for file path
+// - jsonEnvVarName: environment variable name to check for raw JSON config
+// - defaultPath: fallback path if no other source is set
+func LoadFromJSONOrSource(configPath, pathEnvVarName, jsonEnvVarName, defaultPath string) (*Config, error) {
+	if jsonEnvVarName != "" {
+		if rawJSON := strings.TrimSpace(os.Getenv(jsonEnvVarName)); rawJSON != "" {
+			return LoadFromJSON(rawJSON)
+		}
+	}
+
+	return LoadFromSource(configPath, pathEnvVarName, defaultPath)
 }

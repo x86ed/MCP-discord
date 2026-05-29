@@ -74,6 +74,37 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestLoadFromJSON(t *testing.T) {
+	raw := `{
+		"discord": {
+			"token": "json-token"
+		},
+		"mcp": {
+			"command": "json-cmd",
+			"transport": "stdio"
+		}
+	}`
+
+	cfg, err := LoadFromJSON(raw)
+	if err != nil {
+		t.Fatalf("LoadFromJSON() failed: %v", err)
+	}
+
+	if cfg.Discord.Token != "json-token" {
+		t.Errorf("Discord.Token = %q, want %q", cfg.Discord.Token, "json-token")
+	}
+	if cfg.MCP.Command != "json-cmd" {
+		t.Errorf("MCP.Command = %q, want %q", cfg.MCP.Command, "json-cmd")
+	}
+}
+
+func TestLoadFromJSON_Empty(t *testing.T) {
+	_, err := LoadFromJSON("   ")
+	if err == nil {
+		t.Error("LoadFromJSON() should fail for empty input")
+	}
+}
+
 func TestLoadFromSource_Priority(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -159,6 +190,30 @@ func TestLoadFromSource_NoPathSpecified(t *testing.T) {
 	_, err := LoadFromSource("", "TEST_CONFIG_PATH", "")
 	if err == nil {
 		t.Error("LoadFromSource() should fail when no path is specified")
+	}
+}
+
+func TestLoadFromJSONOrSource_Priority(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	defaultConfig := filepath.Join(tmpDir, "default.json")
+	if err := os.WriteFile(defaultConfig, []byte(`{"discord":{"token":"default-token"},"mcp":{"command":"default-cmd"}}`), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	t.Setenv("TEST_JSON_CONFIG", `{"discord":{"token":"json-token"},"mcp":{"command":"json-cmd"}}`)
+	t.Setenv("TEST_CONFIG_PATH", defaultConfig)
+
+	cfg, err := LoadFromJSONOrSource("", "TEST_CONFIG_PATH", "TEST_JSON_CONFIG", defaultConfig)
+	if err != nil {
+		t.Fatalf("LoadFromJSONOrSource() failed: %v", err)
+	}
+
+	if cfg.Discord.Token != "json-token" {
+		t.Errorf("Token = %q, want %q", cfg.Discord.Token, "json-token")
+	}
+	if cfg.MCP.Command != "json-cmd" {
+		t.Errorf("Command = %q, want %q", cfg.MCP.Command, "json-cmd")
 	}
 }
 

@@ -225,6 +225,77 @@ docker-compose restart mcpdiscord
 
 ## Cloud Deployments
 
+### AWS ECS Fargate (Terraform + GitHub Actions)
+
+This repository includes an opinionated AWS deployment path using:
+
+- Terraform infrastructure in `infra/`
+- Container image push + ECS rollout in `.github/workflows/deploy.yml`
+
+#### 1. Build and Runtime Model
+
+- The root `Dockerfile` builds a self-contained runtime image.
+- Embedded assets include:
+  - MCP server binary at `/app/mcp-server` (approximately 50MB)
+  - SQLite DB file at `/app/data/bot.db` (approximately 20MB)
+- SQLite data is stored in the container writable layer for this initial rollout.
+  - Important: replacing tasks can reset writable-layer changes.
+
+#### 2. Provision AWS Infrastructure with Terraform
+
+```bash
+cd infra
+terraform init
+terraform plan -var="discord_bot_token=YOUR_DISCORD_TOKEN"
+terraform apply -var="discord_bot_token=YOUR_DISCORD_TOKEN"
+```
+
+Terraform creates:
+
+- ECR repository
+- ECS cluster, task definition, and service
+- VPC + public subnets + internet gateway
+- IAM roles for task execution and runtime
+- CloudWatch log group
+
+#### 3. Configure GitHub Secrets
+
+Add the following repository secrets before enabling automated deployment:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `ECR_REPOSITORY`
+- `ECS_CLUSTER`
+- `ECS_SERVICE`
+
+`DISCORD_BOT_TOKEN` is provided to ECS at runtime (Terraform variable or task definition environment) and must not be baked into the image.
+
+#### 4. CI/CD on Push to Main
+
+On each push to `main`, `.github/workflows/deploy.yml`:
+
+1. Configures AWS credentials
+2. Logs in to ECR
+3. Builds and pushes image tags (`<sha>`, `latest`)
+4. Renders ECS task definition with the new image
+5. Deploys and waits for ECS service stability
+
+#### 5. Verify Deployment
+
+```bash
+# ECS service status
+aws ecs describe-services \
+  --cluster <your-cluster> \
+  --services <your-service> \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+
+# Tail application logs from CloudWatch
+aws logs tail /ecs/mcpdiscord --follow
+```
+
+Verify in Discord that slash commands are available and tool calls succeed.
+
 ### AWS EC2
 
 1. Launch EC2 instance (t3.micro or larger)
