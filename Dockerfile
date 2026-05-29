@@ -8,7 +8,7 @@
 # To add your Go MCP server:
 #   mkdir -p cmd/mcpserver && cp your-mcp-code/* cmd/mcpserver/
 #
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates git
 WORKDIR /src

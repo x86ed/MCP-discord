@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.21', '1.22', '1.23']
+        go-version: ['1.26']
     
     steps:
       - name: Checkout code
@@ -54,7 +54,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26'
 
       - name: Download dependencies
         run: go mod download
@@ -96,32 +96,21 @@ jobs:
       - name: Enforce coverage threshold
         run: |
           COVERAGE=${{ steps.coverage.outputs.coverage }}
-          MIN_THRESHOLD=90.0
-          TARGET_THRESHOLD=95.0
+          MIN_THRESHOLD=95.0
           
           echo "Coverage: ${COVERAGE}%"
-          echo "Minimum Threshold: ${MIN_THRESHOLD}%"
-          echo "Target Threshold: ${TARGET_THRESHOLD}%"
+          echo "Production Minimum: ${MIN_THRESHOLD}%"
           echo ""
           
-          # Three-tier threshold evaluation:
-          # - < 90%: FAIL with error annotation (workflow fails)
-          # - 90-94.99%: PASS with warning annotation (workflow passes, encourages improvement)
-          # - >= 95%: PASS with success message (workflow passes, excellent coverage)
+          # Production readiness threshold: 95% minimum
           if (( $(echo "$COVERAGE < $MIN_THRESHOLD" | bc -l) )); then
-            # Below 90% - FAIL
-            echo "::error::Coverage ${COVERAGE}% is below the required minimum of ${MIN_THRESHOLD}%"
-            echo "❌ FAILED: Coverage must be at least ${MIN_THRESHOLD}%"
+            # Below 95% - FAIL
+            echo "::error::Coverage ${COVERAGE}% is below the required minimum of ${MIN_THRESHOLD}% for production deployment"
+            echo "❌ FAILED: Production deployment requires at least ${MIN_THRESHOLD}% coverage"
             exit 1
-          elif (( $(echo "$COVERAGE < $TARGET_THRESHOLD" | bc -l) )); then
-            # 90-94.99% - PASS with WARNING
-            echo "::warning::Coverage ${COVERAGE}% meets minimum (${MIN_THRESHOLD}%) but is below target (${TARGET_THRESHOLD}%)"
-            echo "⚠️  PASS: Coverage meets minimum requirement"
-            echo "   Consider adding more tests to reach ${TARGET_THRESHOLD}% for excellent coverage"
-            exit 0
           else
-            # 95%+ - PASS with SUCCESS
-            echo "✅ EXCELLENT: Coverage ${COVERAGE}% exceeds target threshold of ${TARGET_THRESHOLD}%"
+            # 95%+ - PASS
+            echo "✅ PRODUCTION READY: Coverage ${COVERAGE}% meets production requirement of ${MIN_THRESHOLD}%"
             exit 0
           fi
 
@@ -141,23 +130,18 @@ jobs:
           script: |
             const fs = require('fs');
             const coverage = parseFloat('${{ steps.coverage.outputs.coverage }}');
-            const minThreshold = 90.0;
-            const targetThreshold = 95.0;
+            const minThreshold = 95.0;
             
-            // Determine status based on tiered thresholds
+            // Determine production readiness status
             let status, statusIcon, message;
             if (coverage < minThreshold) {
               status = 'FAIL';
               statusIcon = '❌';
-              message = `Coverage is below the required minimum of ${minThreshold}%`;
-            } else if (coverage < targetThreshold) {
-              status = 'PASS (Warning)';
-              statusIcon = '⚠️';
-              message = `Coverage meets minimum (${minThreshold}%) but is below target (${targetThreshold}%). Consider adding more tests.`;
+              message = `Coverage is below the required minimum of ${minThreshold}% for production deployment`;
             } else {
-              status = 'EXCELLENT';
+              status = 'PRODUCTION READY';
               statusIcon = '✅';
-              message = `Coverage exceeds target threshold of ${targetThreshold}%`;
+              message = `Coverage meets production requirement of ${minThreshold}%`;
             }
             
             const coverageReport = fs.readFileSync('coverage.txt', 'utf8');
@@ -166,8 +150,7 @@ jobs:
             const body = `## 📊 Code Coverage Report
             
             **Total Coverage:** ${coverage}%
-            **Minimum Threshold:** ${minThreshold}%
-            **Target Threshold:** ${targetThreshold}%
+            **Production Minimum:** ${minThreshold}%
             **Status:** ${statusIcon} ${status}
             
             ${message}
@@ -188,3 +171,22 @@ jobs:
               repo: context.repo.repo,
               body: body
             });
+
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: infra
+        run: terraform validate
