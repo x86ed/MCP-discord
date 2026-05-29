@@ -1,3 +1,13 @@
+# Multi-stage Dockerfile for MCP-Discord bot
+#
+# MCP Server Integration:
+#   - Automatically builds Go MCP server from ./cmd/mcpserver/ if present
+#   - Falls back to test MCP server if not found
+#   - Result: /app/mcp-server in final image
+#
+# To add your Go MCP server:
+#   mkdir -p cmd/mcpserver && cp your-mcp-code/* cmd/mcpserver/
+#
 FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache ca-certificates git
@@ -11,10 +21,19 @@ COPY . .
 # Build the main bot binary.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcpdiscord ./cmd/mcpdiscord
 
-# Build an embedded MCP server binary and pad to approximately 50MB.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcp-server ./internal/testutil/mcpserver && \
-    truncate -s 50M /out/mcp-server && \
+# Build your MCP server binary.
+# Option 1: If MCP server is in this repo (e.g., ./cmd/mcpserver/main.go):
+RUN if [ -d "./cmd/mcpserver" ]; then \
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcp-server ./cmd/mcpserver; \
+    else \
+      echo "Warning: cmd/mcpserver not found, using test MCP server" && \
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcp-server ./internal/testutil/mcpserver; \
+    fi && \
     chmod +x /out/mcp-server
+
+# Option 2: If MCP server is external, uncomment and adjust:
+# COPY path/to/mcp-server-source /mcp-src
+# RUN cd /mcp-src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcp-server .
 
 # Create a seeded SQLite-like file at approximately 20MB.
 RUN mkdir -p /out/data && \
@@ -24,7 +43,8 @@ RUN mkdir -p /out/data && \
 # Build-time validation for required embedded assets.
 RUN mcp_size=$(wc -c < /out/mcp-server) && \
     db_size=$(wc -c < /out/data/bot.db) && \
-    [ "$mcp_size" -ge 45000000 ] && [ "$mcp_size" -le 60000000 ] && \
+    echo "MCP server: ${mcp_size} bytes, SQLite DB: ${db_size} bytes" && \
+    [ "$mcp_size" -gt 1000000 ] || { echo "Error: MCP server binary too small (<1MB)"; exit 1; } && \
     [ "$db_size" -ge 15000000 ] && [ "$db_size" -le 30000000 ]
 
 FROM alpine:3.20

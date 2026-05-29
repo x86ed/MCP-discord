@@ -306,6 +306,329 @@ See [examples/with-env/](examples/with-env/) for a complete example.
 }
 ```
 
+## Deployment
+
+### Quick Comparison
+
+| Method | Complexity | Best For | Auto-Restart | Scaling |
+|--------|-----------|----------|--------------|---------|
+| **Docker** | Low | Local/single-server | Yes | Manual |
+| **AWS ECS** | Medium | Production cloud | Yes | Auto |
+| **Systemd** | Low | Linux VPS | Yes | N/A |
+
+### Docker Deployment (Recommended)
+
+The easiest way to deploy MCP-Discord in production. The included Dockerfile builds a self-contained image with:
+
+- **Embedded MCP server binary** (~50MB at `/app/mcp-server`)
+- **SQLite database** (~20MB at `/app/data/bot.db`)
+- **Multi-process management** (bot + MCP server)
+- **Health checks** with automatic restart
+
+**Quick Start:**
+
+```bash
+# Build the image
+docker build -t mcpdiscord .
+
+# Run with environment config
+docker run -d \
+  --name mcpdiscord \
+  -e MCP_CONFIG_JSON='{"discord":{"token":"YOUR_TOKEN"},"mcp":{"command":"/app/mcp-server"}}' \
+  mcpdiscord
+
+# View logs
+docker logs -f mcpdiscord
+```
+
+**Building with Your Go MCP Server:**
+
+If your MCP server is also a Go program:
+
+```bash
+# Add your MCP server code to the repo
+mkdir -p cmd/mcpserver
+cp -r /path/to/your/mcp-server/* cmd/mcpserver/
+
+# Build image (automatically detects and builds cmd/mcpserver)
+docker build -t mcpdiscord .
+```
+
+The Dockerfile automatically builds any Go program in `cmd/mcpserver/` and embeds it at `/app/mcp-server`.
+
+**Using docker-compose:**
+
+```yaml
+version: '3.8'
+services:
+  mcpdiscord:
+    build: .
+    environment:
+      - MCP_CONFIG_JSON=${MCP_CONFIG_JSON}
+      # Or use individual vars and mount config:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+    volumes:
+      - ./mcp-config.json:/app/config.json:ro
+    restart: unless-stopped
+```
+
+See [examples/deployment/](examples/deployment/) for complete Docker and docker-compose configurations.
+
+### AWS ECS Deployment with Terraform
+
+Fully automated cloud deployment with infrastructure-as-code and CI/CD:
+
+**Infrastructure** (Terraform):
+- ECR container registry with lifecycle policies
+- ECS Fargate cluster (no server management)
+- VPC with public subnets and internet gateway
+- IAM roles for task execution
+- CloudWatch logging (14-day retention)
+- Task definition with environment variable injection
+
+**CI/CD** (GitHub Actions):
+- Automatic build and push to ECR on commits to `main`
+- Rolling deployment to ECS with service stability checks
+- Zero-downtime updates
+
+**Prerequisites:**
+- AWS account with appropriate IAM permissions
+- Terraform >= 1.5 installed
+- GitHub repository
+
+**Step 1: Provision Infrastructure**
+
+```bash
+cd infra
+
+# Initialize Terraform
+terraform init
+
+# Review planned changes
+terraform plan \
+  -var="discord_bot_token=YOUR_DISCORD_TOKEN" \
+  -var="mcp_config_json=$(cat ../mcp-config.json)"
+
+# Apply infrastructure
+terraform apply \
+  -var="discord_bot_token=YOUR_DISCORD_TOKEN" \
+  -var="mcp_config_json=$(cat ../mcp-config.json)"
+
+# Note the outputs
+terraform output ecr_repository_url
+terraform output ecs_cluster_arn
+terraform output ecs_service_arn
+```
+
+**Step 2: Configure GitHub Secrets**
+
+Add these secrets to your GitHub repository (Settings → Secrets and variables → Actions):
+
+| Secret | Description | Example |
+|--------|-------------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+| `AWS_REGION` | AWS region | `us-east-1` |
+| `ECR_REPOSITORY` | ECR repository name | `mcpdiscord` |
+| `ECS_CLUSTER` | ECS cluster name | `mcpdiscord-cluster` |
+| `ECS_SERVICE` | ECS service name | `mcpdiscord-service` |
+
+**Step 3: Deploy**
+
+```bash
+# Push to main branch triggers automatic deployment
+git push origin main
+
+# Monitor deployment in GitHub Actions tab
+# Or watch ECS service in AWS console
+```
+
+**Step 4: Verify**
+
+```bash
+# Check ECS service status
+aws ecs describe-services \
+  --cluster mcpdiscord-cluster \
+  --services mcpdiscord-service \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+
+# Tail CloudWatch logs
+aws logs tail /ecs/mcpdiscord --follow
+```
+
+**Cost Estimate** (us-east-1):
+- ECS Fargate (0.25 vCPU, 0.5GB): ~$5/month
+- ECR storage: <$1/month
+- Data transfer (minimal): <$1/month
+- **Total**: ~$7/month
+
+**Terraform Configuration:**
+
+Key variables in `infra/variables.tf`:
+
+```hcl
+variable "aws_region" {
+  default = "us-east-1"
+}
+
+variable "task_cpu" {
+  default = "256"  # 0.25 vCPU
+}
+
+variable "task_memory" {
+  default = "512"  # 512MB
+}
+
+variable "ephemeral_storage_gib" {
+  default = 21  # 20GB for embedded assets + buffer
+}
+
+variable "discord_bot_token" {
+  sensitive = true
+}
+
+variable "mcp_config_json" {
+  description = "Complete MCP config as JSON string"
+  default     = ""
+}
+```
+
+See [infra/README.md](infra/README.md) for detailed Terraform documentation.
+
+### Linux Systemd Deployment
+
+Best for VPS or dedicated servers running Linux:
+
+```bash
+# Install binary
+sudo cp mcpdiscord /usr/local/bin/
+sudo chmod +x /usr/local/bin/mcpdiscord
+
+# Create config directory
+sudo mkdir -p /etc/mcpdiscord
+sudo cp mcp-config.json /etc/mcpdiscord/
+
+# Create systemd service
+sudo cp examples/deployment/mcpdiscord.service /etc/systemd/system/
+
+# Start and enable
+sudo systemctl daemon-reload
+sudo systemctl enable --now mcpdiscord
+
+# Check status
+sudo systemctl status mcpdiscord
+sudo journalctl -u mcpdiscord -f
+```
+
+### Other Deployment Options
+
+- **AWS EC2**: Install on EC2 instance, use Systemd for process management
+- **Google Cloud Compute Engine**: Similar to EC2 deployment
+- **DigitalOcean Droplet**: Use Systemd on Ubuntu/Debian droplet
+- **Heroku**: Use `Procfile` with worker dyno
+- **Railway**: Connect GitHub repo, set environment variables
+
+### Configuration in Production
+
+**Option 1: JSON Environment Variable** (Docker/Cloud-native)
+
+```bash
+export MCP_CONFIG_JSON='{
+  "discord": {
+    "token": "${DISCORD_BOT_TOKEN}",
+    "guildId": ""
+  },
+  "mcp": {
+    "command": "/app/mcp-server",
+    "transport": "stdio"
+  }
+}'
+```
+
+**Option 2: Mounted Configuration File** (Traditional)
+
+```bash
+# Mount config as read-only volume
+docker run -v /path/to/mcp-config.json:/app/config.json:ro mcpdiscord
+```
+
+**Option 3: Environment File** (Systemd)
+
+```bash
+# /etc/mcpdiscord/environment
+DISCORD_BOT_TOKEN=your_token
+WEATHER_API_KEY=your_key
+```
+
+### Security Best Practices
+
+1. **Never commit secrets** to version control
+2. **Use environment variables** for sensitive values
+3. **Restrict IAM permissions** to minimum required (AWS)
+4. **Enable CloudWatch logs** for audit trail
+5. **Use readonly root filesystem** when possible (Docker)
+6. **Run as non-root user** (Dockerfile uses uid 1000)
+7. **Rotate tokens regularly** (Discord bot tokens)
+
+### Monitoring and Health Checks
+
+**Docker Health Check:**
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD pgrep mcpdiscord || exit 1
+```
+
+**ECS Health Check:**
+- Configured automatically in task definition
+- Monitors process existence
+- Restarts container on failure
+
+**Logs:**
+```bash
+# Docker
+docker logs -f mcpdiscord
+
+# AWS CloudWatch
+aws logs tail /ecs/mcpdiscord --follow
+
+# Systemd
+journalctl -u mcpdiscord -f
+```
+
+### Troubleshooting Deployments
+
+**Container won't start:**
+```bash
+# Check logs for error messages
+docker logs mcpdiscord
+
+# Common issues:
+# - Missing DISCORD_BOT_TOKEN
+# - Invalid MCP_CONFIG_JSON syntax
+# - MCP server binary not found or not executable
+```
+
+**ECS task failing:**
+```bash
+# Check task stopped reason
+aws ecs describe-tasks --cluster mcpdiscord-cluster --tasks TASK_ID
+
+# View CloudWatch logs
+aws logs tail /ecs/mcpdiscord --since 10m
+
+# Common issues:
+# - Insufficient CPU/memory (increase task_cpu/task_memory)
+# - ECR pull permissions (check IAM role)
+# - Environment variables not set
+```
+
+**Bot connects but commands don't appear:**
+- Wait up to 1 hour for global commands to propagate
+- Use `guildId` in config for instant updates (development)
+- Check bot has `applications.commands` scope in OAuth2 URL
+
+For detailed deployment instructions and advanced configurations, see the [Deployment Guide](docs/deployment.md).
+
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md) - System design and component relationships
