@@ -174,11 +174,140 @@ sudo systemctl is-active mcpdiscord
 
 Best for: Containerized environments, consistent deployments, easy scaling
 
-### 1. Create Dockerfile
+### 1. Prepare Your MCP Server Binary
+
+The Dockerfile embeds your MCP server binary into the container image. You have several options:
+
+#### Option A: Build Go MCP Server from Source (Recommended for Go)
+
+If your MCP server is a Go program, add it to the repository and the Dockerfile will build it automatically.
+
+**Structure 1: MCP server in same repo**
+
+```bash
+# Add your MCP server code to the repo
+mkdir -p cmd/mcpserver
+# Copy your main.go and other files
+cp /path/to/your/mcp-server/*.go cmd/mcpserver/
+
+# Add dependencies to go.mod if needed
+go get your-mcp-dependencies
+
+# Test build locally
+go build -o mcp-server ./cmd/mcpserver
+```
+
+The Dockerfile automatically detects and builds `cmd/mcpserver` → `/app/mcp-server`
+
+**Example cmd/mcpserver/main.go:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    // your MCP server imports
+)
+
+func main() {
+    // Your MCP server implementation
+    fmt.Fprintln(os.Stderr, "MCP server starting...")
+    // ... handle stdio MCP protocol ...
+}
+```
+
+**Structure 2: MCP server in separate directory**
+
+```dockerfile
+# In Dockerfile, uncomment Option 2 and adjust:
+COPY path/to/mcp-server-source /mcp-src
+RUN cd /mcp-src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/mcp-server .
+```
+
+**Structure 3: MCP server as Go module dependency**
+
+```dockerfile
+# In Dockerfile, add:
+RUN go install github.com/yourorg/mcp-server@latest && \
+    cp $(go env GOPATH)/bin/mcp-server /out/mcp-server
+```
+
+#### Option B: Copy Pre-built Binary from Local Filesystem
+
+Place your MCP server binary in the repository root:
+
+```bash
+# Copy your binary to the repo
+cp /path/to/your/mcp-server ./mcp-server
+chmod +x ./mcp-server
+
+# Verify it's a Linux binary (if building on macOS/Windows)
+file ./mcp-server
+# Should show: ELF 64-bit LSB executable
+
+# Optional: Add to .gitignore if you don't want to commit it
+echo "mcp-server" >> .gitignore
+```
+
+The Dockerfile will automatically copy it: `COPY mcp-server /out/mcp-server`
+
+#### Option B: Download During Build
+
+Add to Dockerfile before the COPY step:
+
+```dockerfile
+# Download your MCP binary
+RUN wget -O /out/mcp-server https://your-server.com/mcp-server && \
+    chmod +x /out/mcp-server
+```
+
+#### Option C: Build from Source in Docker
+
+If your MCP server is buildable, add a build stage:
+
+```dockerfile
+# Add before the Go builder stage
+FROM node:20-alpine AS mcp-builder
+WORKDIR /mcp
+COPY mcp-server-source/ .
+RUN npm install && npm run build
+RUN pkg . -t node20-linux-x64 -o mcp-server
+
+# Then in the Go builder stage:
+COPY --from=mcp-builder /mcp/mcp-server /out/mcp-server
+```
+
+#### Option D: Use npx/Node.js MCP Server
+
+If using a Node.js-based MCP server (e.g., `@modelcontextprotocol/server-weather`), install Node.js in the runtime image:
+
+```dockerfile
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata procps nodejs npm
+# ... rest of Dockerfile
+
+# Update config to use npx
+ENV MCP_CONFIG_JSON='{"mcp":{"command":"npx","args":["-y","@modelcontextprotocol/server-weather"]}}'
+```
+
+**Important**: Ensure your binary is compiled for Linux x86_64, even if building on macOS/Windows.
+
+### 2. Create Dockerfile
 
 See [examples/deployment/Dockerfile](../examples/deployment/Dockerfile) for the complete Dockerfile.
 
-### 2. Build Image
+The Dockerfile is already configured in the repository root and includes:
+- Multi-stage build with Go 1.25
+- Embedded MCP server binary validation (must be >1MB)
+- SQLite database (~20MB) for persistent storage
+- Non-root user (mcpdiscord, uid 1000)
+- Health check using `pgrep`
+- Entrypoint script for process management
+
+### 3. Build Image
+
+### 3. Build Image
 
 ```bash
 # Build image
@@ -188,11 +317,11 @@ docker build -t mcpdiscord:latest .
 docker tag mcpdiscord:latest registry.example.com/mcpdiscord:latest
 ```
 
-### 3. Create docker-compose.yml
+### 4. Create docker-compose.yml
 
 See [examples/deployment/docker-compose.yml](../examples/deployment/docker-compose.yml) for the complete compose file.
 
-### 4. Deploy with Docker Compose
+### 5. Deploy with Docker Compose
 
 ```bash
 # Create .env file with secrets
@@ -210,7 +339,7 @@ docker-compose logs -f mcpdiscord
 docker-compose down
 ```
 
-### 5. Health Check
+### 6. Health Check
 
 ```bash
 # Check container status
@@ -224,6 +353,77 @@ docker-compose restart mcpdiscord
 ```
 
 ## Cloud Deployments
+
+### AWS ECS Fargate (Terraform + GitHub Actions)
+
+This repository includes an opinionated AWS deployment path using:
+
+- Terraform infrastructure in `infra/`
+- Container image push + ECS rollout in `.github/workflows/deploy.yml`
+
+#### 1. Build and Runtime Model
+
+- The root `Dockerfile` builds a self-contained runtime image.
+- Embedded assets include:
+  - MCP server binary at `/app/mcp-server` (approximately 50MB)
+  - SQLite DB file at `/app/data/bot.db` (approximately 20MB)
+- SQLite data is stored in the container writable layer for this initial rollout.
+  - Important: replacing tasks can reset writable-layer changes.
+
+#### 2. Provision AWS Infrastructure with Terraform
+
+```bash
+cd infra
+terraform init
+terraform plan -var="discord_bot_token=YOUR_DISCORD_TOKEN"
+terraform apply -var="discord_bot_token=YOUR_DISCORD_TOKEN"
+```
+
+Terraform creates:
+
+- ECR repository
+- ECS cluster, task definition, and service
+- VPC + public subnets + internet gateway
+- IAM roles for task execution and runtime
+- CloudWatch log group
+
+#### 3. Configure GitHub Secrets
+
+Add the following repository secrets before enabling automated deployment:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `ECR_REPOSITORY`
+- `ECS_CLUSTER`
+- `ECS_SERVICE`
+
+`DISCORD_BOT_TOKEN` is provided to ECS at runtime (Terraform variable or task definition environment) and must not be baked into the image.
+
+#### 4. CI/CD on Push to Main
+
+On each push to `main`, `.github/workflows/deploy.yml`:
+
+1. Configures AWS credentials
+2. Logs in to ECR
+3. Builds and pushes image tags (`<sha>`, `latest`)
+4. Renders ECS task definition with the new image
+5. Deploys and waits for ECS service stability
+
+#### 5. Verify Deployment
+
+```bash
+# ECS service status
+aws ecs describe-services \
+  --cluster <your-cluster> \
+  --services <your-service> \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+
+# Tail application logs from CloudWatch
+aws logs tail /ecs/mcpdiscord --follow
+```
+
+Verify in Discord that slash commands are available and tool calls succeed.
 
 ### AWS EC2
 

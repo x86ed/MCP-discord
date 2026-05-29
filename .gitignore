@@ -71,3 +71,29 @@ desktop.ini
 # Development tools
 .direnv
 .envrc
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/*
+!data/.gitkeep
+
+# Docker build cache
+mcp-server

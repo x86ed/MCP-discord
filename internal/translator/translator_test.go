@@ -237,7 +237,7 @@ func TestValidateCommandCount(t *testing.T) {
 }
 
 func TestTranslateArguments(t *testing.T) {
-	trans := New()
+	trans := New(nil)
 
 	// Test with a simple tool schema
 	tool := mcp.Tool{
@@ -266,4 +266,152 @@ func TestTranslateArguments(t *testing.T) {
 			t.Error("TranslateArguments with missing required parameter should error")
 		}
 	})
+}
+
+func TestToolToSlashCommand_EmptyDescription(t *testing.T) {
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name:        "test",
+		Description: "", // Empty description
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+		},
+	}
+
+	cmd, err := trans.ToolToSlashCommand(tool)
+	if err != nil {
+		t.Fatalf("ToolToSlashCommand failed: %v", err)
+	}
+
+	if cmd.Description != "No description provided" {
+		t.Errorf("Expected default description, got: %s", cmd.Description)
+	}
+}
+
+func TestToolToSlashCommand_LongDescription(t *testing.T) {
+	trans := New(nil)
+	longDesc := "This is a very long description that exceeds the Discord limit of 100 characters and should be truncated properly"
+	tool := mcp.Tool{
+		Name:        "test",
+		Description: longDesc,
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+		},
+	}
+
+	cmd, err := trans.ToolToSlashCommand(tool)
+	if err != nil {
+		t.Fatalf("ToolToSlashCommand failed: %v", err)
+	}
+
+	if len(cmd.Description) > 100 {
+		t.Errorf("Description length %d exceeds 100 characters", len(cmd.Description))
+	}
+
+	if cmd.Description[len(cmd.Description)-3:] != "..." {
+		t.Error("Expected truncation marker '...' at end")
+	}
+}
+
+func TestParametersToOptions_BooleanType(t *testing.T) {
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"enabled": {
+					Type:        "boolean",
+					Description: "Enable feature",
+				},
+			},
+		},
+	}
+
+	options, err := trans.parametersToOptions(tool)
+	if err != nil {
+		t.Fatalf("parametersToOptions failed: %v", err)
+	}
+
+	if len(options) != 1 {
+		t.Fatalf("Expected 1 option, got %d", len(options))
+	}
+}
+
+func TestParametersToOptions_IntegerType(t *testing.T) {
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"count": {
+					Type:        "integer",
+					Description: "Count value",
+				},
+			},
+		},
+	}
+
+	options, err := trans.parametersToOptions(tool)
+	if err != nil {
+		t.Fatalf("parametersToOptions failed: %v", err)
+	}
+
+	if len(options) != 1 {
+		t.Fatalf("Expected 1 option, got %d", len(options))
+	}
+}
+
+func TestParametersToOptions_ArrayType(t *testing.T) {
+	trans := New(nil)
+	tool := mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"items": {
+					Type:        "array",
+					Description: "List of items",
+				},
+			},
+		},
+	}
+
+	options, err := trans.parametersToOptions(tool)
+	if err != nil {
+		t.Fatalf("parametersToOptions failed: %v", err)
+	}
+
+	if len(options) != 1 {
+		t.Fatalf("Expected 1 option, got %d", len(options))
+	}
+}
+
+func TestMapTypeToDiscord_AllTypes(t *testing.T) {
+	tests := []struct {
+		inputType    string
+		expectedType int
+		expectedHint string
+	}{
+		{"string", 3, ""},
+		{"number", 10, ""},
+		{"integer", 10, ""},
+		{"boolean", 5, ""},
+		{"array", 3, "(Comma-separated list)"},
+		{"object", 3, "(JSON object)"},
+		{"unknown", 3, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.inputType, func(t *testing.T) {
+			discordType, hint := mapTypeToDiscord(tt.inputType)
+			if int(discordType) == 0 {
+				t.Errorf("mapTypeToDiscord(%q) returned 0", tt.inputType)
+			}
+			if hint != tt.expectedHint {
+				t.Errorf("mapTypeToDiscord(%q) hint = %q, want %q", tt.inputType, hint, tt.expectedHint)
+			}
+		})
+	}
 }

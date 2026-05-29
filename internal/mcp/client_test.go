@@ -2,8 +2,14 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
+
+// Helper function for tests
+func int64Ptr(i int64) *int64 {
+	return &i
+}
 
 func TestNewRequest(t *testing.T) {
 	req := NewRequest("test/method", map[string]interface{}{"key": "value"})
@@ -16,21 +22,21 @@ func TestNewRequest(t *testing.T) {
 		t.Errorf("Method = %q, want %q", req.Method, "test/method")
 	}
 
-	if req.ID == 0 {
+	if req.ID == nil || *req.ID == 0 {
 		t.Error("Expected non-zero ID")
 	}
 
 	// Test that IDs increment
 	req2 := NewRequest("another/method", nil)
-	if req2.ID <= req.ID {
-		t.Errorf("Expected ID to increment: %d <= %d", req2.ID, req.ID)
+	if req2.ID == nil || req.ID == nil || *req2.ID <= *req.ID {
+		t.Errorf("Expected ID to increment: %d <= %d", *req2.ID, *req.ID)
 	}
 }
 
 func TestEncodeRequest(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      123,
+		ID:      int64Ptr(123),
 		Method:  "test/method",
 		Params:  map[string]interface{}{"key": "value"},
 	}
@@ -213,6 +219,77 @@ func TestTruncateDescription(t *testing.T) {
 	}
 }
 
+func TestToolResultDecode_ResourceLinkFields(t *testing.T) {
+	payload := []byte(`{
+		"content": [
+			{
+				"type": "resource",
+				"resourceLink": {
+					"url": "https://example.com/a.png",
+					"mimeType": "image/png"
+				}
+			},
+			{
+				"type": "resource",
+				"resorceLink": {
+					"uri": "https://example.com/b.jpg",
+					"mimeType": "image/jpeg"
+				}
+			}
+		]
+	}`)
+
+	var result ToolResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("failed to decode tool result: %v", err)
+	}
+
+	if len(result.Content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(result.Content))
+	}
+
+	if result.Content[0].ResourceLink == nil || result.Content[0].ResourceLink.URL != "https://example.com/a.png" {
+		t.Fatalf("expected resourceLink URL to decode, got %+v", result.Content[0].ResourceLink)
+	}
+
+	if result.Content[1].ResorceLink == nil || result.Content[1].ResorceLink.URI != "https://example.com/b.jpg" {
+		t.Fatalf("expected resorceLink URI to decode, got %+v", result.Content[1].ResorceLink)
+	}
+}
+
+func TestToolResultDecode_InlineResourceLinkFields(t *testing.T) {
+	payload := []byte(`{
+		"content": [
+			{
+				"type": "resource_link",
+				"mimeType": "image/webp",
+				"uri": "https://skydex.info/img/airports/KLAX.webp",
+				"name": "LAX"
+			}
+		]
+	}`)
+
+	var result ToolResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("failed to decode tool result: %v", err)
+	}
+
+	if len(result.Content) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(result.Content))
+	}
+
+	block := result.Content[0]
+	if block.Type != "resource_link" {
+		t.Fatalf("expected type resource_link, got %q", block.Type)
+	}
+	if block.MimeType != "image/webp" {
+		t.Fatalf("expected mimeType image/webp, got %q", block.MimeType)
+	}
+	if block.URI != "https://skydex.info/img/airports/KLAX.webp" {
+		t.Fatalf("expected URI to decode, got %q", block.URI)
+	}
+}
+
 func TestCheckNameCollisions(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -311,7 +388,7 @@ func TestStdioClient_CallTool_Integration(t *testing.T) {
 func TestEncodeRequest_WithNilParams(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      int64Ptr(1),
 		Method:  "test",
 		Params:  nil,
 	}
@@ -329,7 +406,7 @@ func TestEncodeRequest_WithNilParams(t *testing.T) {
 func TestEncodeRequest_WithComplexParams(t *testing.T) {
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      int64Ptr(1),
 		Method:  "test",
 		Params: map[string]interface{}{
 			"string":  "value",
@@ -383,7 +460,9 @@ func TestNewRequest_Sequential(t *testing.T) {
 	var ids []int64
 	for i := 0; i < 5; i++ {
 		req := NewRequest("test", nil)
-		ids = append(ids, req.ID)
+		if req.ID != nil {
+			ids = append(ids, *req.ID)
+		}
 	}
 
 	// Check all IDs are unique and increasing
