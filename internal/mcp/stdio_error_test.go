@@ -247,3 +247,69 @@ func TestStdioClient_CloseWithoutConnect(t *testing.T) {
 		t.Errorf("Close without connect should not error: %v", err)
 	}
 }
+
+// TestStdioClient_MultipleToolCalls tests calling tools multiple times
+func TestStdioClient_MultipleToolCalls(t *testing.T) {
+	serverPath := testMCPServerPath(t)
+	cfg := config.MCPConfig{
+		Command: serverPath,
+	}
+	client := NewStdioClient(cfg, slog.Default())
+
+	ctx := context.Background()
+	if err := client.Connect(ctx); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer client.Close()
+
+	// Call ListTools multiple times to exercise sendRequest/readResponses
+	for i := 0; i < 5; i++ {
+		tools, err := client.ListTools(ctx)
+		if err != nil {
+			t.Fatalf("ListTools call %d failed: %v", i+1, err)
+		}
+		if len(tools) == 0 {
+			t.Error("Expected at least one tool")
+		}
+	}
+
+	// Call a tool multiple times if available
+	tools, _ := client.ListTools(ctx)
+	if len(tools) > 0 {
+		for i := 0; i < 3; i++ {
+			_, err := client.CallTool(ctx, tools[0].Name, map[string]interface{}{
+				"iteration": i,
+			})
+			// Ignore errors as tool may not accept these args
+			_ = err
+		}
+	}
+}
+
+// TestStdioClient_ConnectWithMultipleEnvVars tests env var handling
+func TestStdioClient_ConnectWithMultipleEnvVars(t *testing.T) {
+	serverPath := testMCPServerPath(t)
+	cfg := config.MCPConfig{
+		Command: serverPath,
+		Env: map[string]string{
+			"VAR1":      "value1",
+			"VAR2":      "value2",
+			"VAR3":      "value3",
+			"EMPTY_VAR": "",
+		},
+	}
+	client := NewStdioClient(cfg, slog.Default())
+
+	ctx := context.Background()
+	if err := client.Connect(ctx); err != nil {
+		t.Fatalf("Connect with multiple env vars failed: %v", err)
+	}
+	defer client.Close()
+
+	// Verify connection works
+	_, err := client.ListTools(ctx)
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+}
+
