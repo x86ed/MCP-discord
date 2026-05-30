@@ -4,24 +4,18 @@
 TBD - created by archiving change improve-coverage-feedback. Update Purpose after archive.
 ## Requirements
 ### Requirement: Coverage thresholds with tiered messaging
-The GitHub Actions workflow SHALL evaluate test coverage against multiple thresholds and provide appropriate feedback messages based on the coverage tier achieved.
+The GitHub Actions workflow SHALL evaluate test coverage against a production-readiness threshold and provide appropriate feedback messages based on whether coverage meets the requirement.
 
 #### Scenario: Coverage below minimum threshold
-- **WHEN** test coverage is less than 90%
+- **WHEN** test coverage is less than 95%
 - **THEN** workflow SHALL fail with exit code 1
-- **AND** display error message indicating coverage is below required threshold
+- **AND** display error message indicating coverage is below required threshold for production
 - **AND** use error annotation (::error::) for visibility in workflow UI
 
-#### Scenario: Coverage meets minimum threshold
-- **WHEN** test coverage is greater than or equal to 90% and less than 95%
-- **THEN** workflow SHALL pass (exit code 0)
-- **AND** display warning message indicating coverage meets minimum but is below target
-- **AND** use warning annotation (::warning::) for visibility in workflow UI
-
-#### Scenario: Coverage exceeds target threshold
+#### Scenario: Coverage meets production threshold
 - **WHEN** test coverage is greater than or equal to 95%
 - **THEN** workflow SHALL pass (exit code 0)
-- **AND** display success message indicating excellent coverage
+- **AND** display success message indicating coverage meets production requirements
 - **AND** use standard output without error or warning annotations
 
 ### Requirement: Coverage percentage calculation
@@ -38,17 +32,13 @@ The workflow SHALL calculate total coverage percentage from the coverage profile
 - **AND** handle decimal values correctly (e.g., 90.5%, 94.99%)
 
 ### Requirement: Clear feedback messages
-The workflow SHALL provide clear, actionable feedback messages that indicate coverage quality and expectations.
+The workflow SHALL provide clear, actionable feedback messages that indicate coverage quality and production-readiness.
 
 #### Scenario: Failure message clarity
-- **WHEN** coverage is below 90%
-- **THEN** message SHALL include actual coverage percentage, required threshold (90%), and indicate test failure
-
-#### Scenario: Warning message guidance
-- **WHEN** coverage is 90-94.99%
-- **THEN** message SHALL include actual coverage percentage, indicate minimum is met, and encourage aiming for 95%
+- **WHEN** coverage is below 95%
+- **THEN** message SHALL include actual coverage percentage, required threshold (95%), and indicate production deployment is blocked
 
 #### Scenario: Success message confirmation
 - **WHEN** coverage is 95% or higher
-- **THEN** message SHALL include actual coverage percentage and confirm excellent coverage achievement
+- **THEN** message SHALL include actual coverage percentage and confirm production-ready status
 
