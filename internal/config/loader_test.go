@@ -217,6 +217,28 @@ func TestLoadFromJSONOrSource_Priority(t *testing.T) {
 	}
 }
 
+func TestLoadFromJSONOrSource_EmptyJSONEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	defaultConfig := filepath.Join(tmpDir, "default.json")
+	if err := os.WriteFile(defaultConfig, []byte(`{"discord":{"token":"file-token"},"mcp":{"command":"file-cmd"}}`), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set the JSON env var to empty/whitespace
+	t.Setenv("TEST_JSON_CONFIG", "   ")
+
+	cfg, err := LoadFromJSONOrSource("", "", "TEST_JSON_CONFIG", defaultConfig)
+	if err != nil {
+		t.Fatalf("LoadFromJSONOrSource() failed: %v", err)
+	}
+
+	// Should fall back to file
+	if cfg.Discord.Token != "file-token" {
+		t.Errorf("Token = %q, want %q (from file fallback)", cfg.Discord.Token, "file-token")
+	}
+}
+
 func TestInterpolateEnvVars_Success(t *testing.T) {
 	os.Setenv("TEST_TOKEN", "secret-token-123")
 	os.Setenv("TEST_GUILD", "guild-789")

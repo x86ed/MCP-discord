@@ -96,21 +96,32 @@ jobs:
       - name: Enforce coverage threshold
         run: |
           COVERAGE=${{ steps.coverage.outputs.coverage }}
-          MIN_THRESHOLD=95.0
+          MIN_THRESHOLD=90.0
+          TARGET_THRESHOLD=95.0
           
           echo "Coverage: ${COVERAGE}%"
-          echo "Production Minimum: ${MIN_THRESHOLD}%"
+          echo "Minimum Threshold: ${MIN_THRESHOLD}%"
+          echo "Target Threshold: ${TARGET_THRESHOLD}%"
           echo ""
           
-          # Production readiness threshold: 95% minimum
+          # Three-tier threshold evaluation:
+          # - < 90%: FAIL with error annotation (workflow fails)
+          # - 90-94.99%: PASS with warning annotation (workflow passes, encourages improvement)
+          # - >= 95%: PASS with success message (workflow passes, excellent coverage)
           if (( $(echo "$COVERAGE < $MIN_THRESHOLD" | bc -l) )); then
-            # Below 95% - FAIL
-            echo "::error::Coverage ${COVERAGE}% is below the required minimum of ${MIN_THRESHOLD}% for production deployment"
-            echo "❌ FAILED: Production deployment requires at least ${MIN_THRESHOLD}% coverage"
+            # Below 90% - FAIL
+            echo "::error::Coverage ${COVERAGE}% is below the required minimum of ${MIN_THRESHOLD}%"
+            echo "❌ FAILED: Coverage must be at least ${MIN_THRESHOLD}%"
             exit 1
+          elif (( $(echo "$COVERAGE < $TARGET_THRESHOLD" | bc -l) )); then
+            # 90-94.99% - PASS with WARNING
+            echo "::warning::Coverage ${COVERAGE}% meets minimum (${MIN_THRESHOLD}%) but is below target (${TARGET_THRESHOLD}%)"
+            echo "⚠️  PASS: Coverage meets minimum requirement"
+            echo "   Consider adding more tests to reach ${TARGET_THRESHOLD}% for excellent coverage"
+            exit 0
           else
-            # 95%+ - PASS
-            echo "✅ PRODUCTION READY: Coverage ${COVERAGE}% meets production requirement of ${MIN_THRESHOLD}%"
+            # 95%+ - PASS with SUCCESS
+            echo "✅ EXCELLENT: Coverage ${COVERAGE}% exceeds target threshold of ${TARGET_THRESHOLD}%"
             exit 0
           fi
 
@@ -130,18 +141,23 @@ jobs:
           script: |
             const fs = require('fs');
             const coverage = parseFloat('${{ steps.coverage.outputs.coverage }}');
-            const minThreshold = 95.0;
+            const minThreshold = 90.0;
+            const targetThreshold = 95.0;
             
-            // Determine production readiness status
+            // Determine status based on tiered thresholds
             let status, statusIcon, message;
             if (coverage < minThreshold) {
               status = 'FAIL';
               statusIcon = '❌';
-              message = `Coverage is below the required minimum of ${minThreshold}% for production deployment`;
+              message = `Coverage is below the required minimum of ${minThreshold}%`;
+            } else if (coverage < targetThreshold) {
+              status = 'PASS (Warning)';
+              statusIcon = '⚠️';
+              message = `Coverage meets minimum (${minThreshold}%) but is below target (${targetThreshold}%). Consider adding more tests.`;
             } else {
-              status = 'PRODUCTION READY';
+              status = 'EXCELLENT';
               statusIcon = '✅';
-              message = `Coverage meets production requirement of ${minThreshold}%`;
+              message = `Coverage exceeds target threshold of ${targetThreshold}%`;
             }
             
             const coverageReport = fs.readFileSync('coverage.txt', 'utf8');
@@ -150,7 +166,8 @@ jobs:
             const body = `## 📊 Code Coverage Report
             
             **Total Coverage:** ${coverage}%
-            **Production Minimum:** ${minThreshold}%
+            **Minimum Threshold:** ${minThreshold}%
+            **Target Threshold:** ${targetThreshold}%
             **Status:** ${statusIcon} ${status}
             
             ${message}

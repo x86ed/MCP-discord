@@ -1,0 +1,818 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>mcp: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">mcpdiscord/internal/mcp/discovery.go (97.4%)</option>
+				
+				<option value="file1">mcpdiscord/internal/mcp/jsonrpc.go (100.0%)</option>
+				
+				<option value="file2">mcpdiscord/internal/mcp/stdio.go (82.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package mcp
+
+import (
+        "context"
+        "fmt"
+        "log/slog"
+        "strings"
+        "time"
+)
+
+// DiscoveryService handles tool discovery from MCP servers.
+type DiscoveryService struct {
+        client Client
+        logger *slog.Logger
+}
+
+// NewDiscoveryService creates a new tool discovery service.
+func NewDiscoveryService(client Client, logger *slog.Logger) *DiscoveryService <span class="cov5" title="16">{
+        if logger == nil </span><span class="cov4" title="8">{
+                logger = slog.Default()
+        }</span>
+        <span class="cov5" title="16">return &amp;DiscoveryService{
+                client: client,
+                logger: logger,
+        }</span>
+}
+
+// DiscoverTools performs tool discovery with validation and collision detection.
+// Returns discovered tools or an error if discovery fails.
+func (d *DiscoveryService) DiscoverTools(ctx context.Context) ([]Tool, error) <span class="cov5" title="19">{
+        d.logger.Info("starting tool discovery")
+
+        // Set 120 second timeout for tool listing
+        ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+        defer cancel()
+
+        // List tools from MCP server
+        tools, err := d.client.ListTools(ctx)
+        if err != nil </span><span class="cov3" title="4">{
+                return nil, fmt.Errorf("failed to list tools: %w", err)
+        }</span>
+
+        // Validate empty tool list
+        <span class="cov5" title="15">if len(tools) == 0 </span><span class="cov3" title="7">{
+                return nil, fmt.Errorf("MCP server returned empty tool list")
+        }</span>
+
+        // Validate and process each tool
+        <span class="cov4" title="8">validatedTools := make([]Tool, 0, len(tools))
+        for i, tool := range tools </span><span class="cov5" title="14">{
+                if err := ValidateTool(&amp;tool); err != nil </span><span class="cov3" title="4">{
+                        d.logger.Warn("skipping invalid tool",
+                                "index", i,
+                                "name", tool.Name,
+                                "error", err)
+                        continue</span>
+                }
+
+                // Truncate description if needed
+                <span class="cov4" title="10">tool.Description = TruncateDescription(tool.Description)
+
+                validatedTools = append(validatedTools, tool)</span>
+        }
+
+        // Check for name collisions
+        <span class="cov4" title="8">if err := CheckNameCollisions(validatedTools); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov4" title="8">d.logger.Info("tool discovery complete",
+                "total", len(tools),
+                "valid", len(validatedTools))
+
+        return validatedTools, nil</span>
+}
+
+// DiscoverWithReconnect attempts tool discovery with automatic reconnection on failure.
+func (d *DiscoveryService) DiscoverWithReconnect(ctx context.Context) ([]Tool, error) <span class="cov3" title="6">{
+        // Try discovery first
+        tools, err := d.DiscoverTools(ctx)
+        if err == nil </span><span class="cov1" title="1">{
+                return tools, nil
+        }</span>
+
+        <span class="cov3" title="5">d.logger.Warn("initial tool discovery failed, attempting reconnection", "error", err)
+
+        // Close existing connection
+        if closeErr := d.client.Close(); closeErr != nil </span><span class="cov0" title="0">{
+                d.logger.Error("failed to close client during reconnection", "error", closeErr)
+        }</span>
+
+        // Reconnect
+        <span class="cov3" title="5">if err := d.client.Connect(ctx); err != nil </span><span class="cov2" title="2">{
+                return nil, fmt.Errorf("failed to reconnect to MCP server: %w", err)
+        }</span>
+
+        // Retry discovery
+        <span class="cov2" title="3">tools, err = d.DiscoverTools(ctx)
+        if err != nil </span><span class="cov2" title="2">{
+                return nil, fmt.Errorf("tool discovery failed after reconnection: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">d.logger.Info("tool discovery succeeded after reconnection")
+        return tools, nil</span>
+}
+
+// ValidateTool checks that a tool has required metadata fields.
+func ValidateTool(tool *Tool) error <span class="cov6" title="30">{
+        // Validate name presence
+        if tool.Name == "" </span><span class="cov3" title="6">{
+                return fmt.Errorf("tool missing required 'name' field")
+        }</span>
+
+        // Validate description presence (can be empty but field must exist)
+        // Note: Description is a string, not a pointer, so this always passes
+        // We're keeping this check for API consistency and future changes
+
+        // Validate input schema
+        <span class="cov5" title="24">if tool.InputSchema.Type == "" </span><span class="cov3" title="4">{
+                return fmt.Errorf("tool '%s' missing input schema type", tool.Name)
+        }</span>
+
+        // Validate schema type is "object" (MCP tools expect object parameters)
+        <span class="cov5" title="20">if tool.InputSchema.Type != "object" </span><span class="cov3" title="6">{
+                return fmt.Errorf("tool '%s' has invalid schema type '%s' (expected 'object')",
+                        tool.Name, tool.InputSchema.Type)
+        }</span>
+
+        // Validate properties map exists (can be empty)
+        <span class="cov5" title="14">if tool.InputSchema.Properties == nil </span><span class="cov4" title="10">{
+                tool.InputSchema.Properties = make(map[string]PropertySchema)
+        }</span>
+
+        <span class="cov5" title="14">return nil</span>
+}
+
+// TruncateDescription truncates a description to 100 characters with "..." suffix.
+func TruncateDescription(desc string) string <span class="cov5" title="19">{
+        const maxLen = 100
+        if len(desc) &lt;= maxLen </span><span class="cov5" title="16">{
+                return desc
+        }</span>
+        <span class="cov2" title="3">return desc[:97] + "..."</span>
+}
+
+// CheckNameCollisions detects if multiple tools would map to the same sanitized command name.
+func CheckNameCollisions(tools []Tool) error <span class="cov5" title="18">{
+        seen := make(map[string][]string)
+
+        for _, tool := range tools </span><span class="cov6" title="34">{
+                // Sanitize the tool name (this will be implemented in translator package)
+                // For now, we use a simple sanitization here
+                sanitized := sanitizeToolName(tool.Name)
+
+                seen[sanitized] = append(seen[sanitized], tool.Name)
+        }</span>
+
+        // Report collisions
+        <span class="cov5" title="18">var collisions []string
+        for sanitized, originals := range seen </span><span class="cov6" title="26">{
+                if len(originals) &gt; 1 </span><span class="cov3" title="7">{
+                        collisions = append(collisions,
+                                fmt.Sprintf("'%s' -&gt; %v", sanitized, originals))
+                }</span>
+        }
+
+        <span class="cov5" title="18">if len(collisions) &gt; 0 </span><span class="cov3" title="7">{
+                return fmt.Errorf("tool name collisions detected after sanitization: %s",
+                        strings.Join(collisions, "; "))
+        }</span>
+
+        <span class="cov4" title="11">return nil</span>
+}
+
+// sanitizeToolName converts a tool name to a valid Discord command name.
+// This is a simplified version - the full implementation is in the translator package.
+func sanitizeToolName(name string) string <span class="cov6" title="45">{
+        name = strings.ToLower(name)
+        name = strings.ReplaceAll(name, " ", "-")
+        name = strings.ReplaceAll(name, "_", "-")
+        // Remove other special characters
+        var result strings.Builder
+        for _, r := range name </span><span class="cov10" title="352">{
+                if (r &gt;= 'a' &amp;&amp; r &lt;= 'z') || (r &gt;= '0' &amp;&amp; r &lt;= '9') || r == '-' </span><span class="cov9" title="345">{
+                        result.WriteRune(r)
+                }</span>
+        }
+        <span class="cov6" title="45">return result.String()</span>
+}
+
+// ParseInputSchema extracts parameter information from a JSON schema.
+func ParseInputSchema(schema InputSchema) ([]Parameter, error) <span class="cov3" title="4">{
+        params := make([]Parameter, 0, len(schema.Properties))
+
+        for name, prop := range schema.Properties </span><span class="cov4" title="10">{
+                required := false
+                for _, req := range schema.Required </span><span class="cov5" title="14">{
+                        if req == name </span><span class="cov3" title="4">{
+                                required = true
+                                break</span>
+                        }
+                }
+
+                <span class="cov4" title="10">param := Parameter{
+                        Name:        name,
+                        Type:        prop.Type,
+                        Description: prop.Description,
+                        Required:    required,
+                        Schema:      prop,
+                }
+
+                params = append(params, param)</span>
+        }
+
+        <span class="cov3" title="4">return params, nil</span>
+}
+
+// Parameter represents a parsed tool parameter.
+type Parameter struct {
+        Name        string
+        Type        string
+        Description string
+        Required    bool
+        Schema      PropertySchema
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package mcp
+
+import (
+        "encoding/json"
+        "fmt"
+        "sync/atomic"
+)
+
+// JSONRPCRequest represents a JSON-RPC 2.0 request message.
+type JSONRPCRequest struct {
+        JSONRPC string      `json:"jsonrpc"`
+        ID      *int64      `json:"id,omitempty"` // Pointer to support notifications (no ID)
+        Method  string      `json:"method"`
+        Params  interface{} `json:"params,omitempty"`
+}
+
+// JSONRPCResponse represents a JSON-RPC 2.0 response message.
+type JSONRPCResponse struct {
+        JSONRPC string          `json:"jsonrpc"`
+        ID      int64           `json:"id"`
+        Result  json.RawMessage `json:"result,omitempty"`
+        Error   *JSONRPCError   `json:"error,omitempty"`
+}
+
+// JSONRPCError represents a JSON-RPC 2.0 error object.
+type JSONRPCError struct {
+        Code    int             `json:"code"`
+        Message string          `json:"message"`
+        Data    json.RawMessage `json:"data,omitempty"`
+}
+
+// requestIDCounter generates unique request IDs.
+var requestIDCounter int64
+
+// NewRequest creates a new JSON-RPC request with a unique ID.
+func NewRequest(method string, params interface{}) *JSONRPCRequest <span class="cov10" title="165">{
+        id := atomic.AddInt64(&amp;requestIDCounter, 1)
+        return &amp;JSONRPCRequest{
+                JSONRPC: "2.0",
+                ID:      &amp;id,
+                Method:  method,
+                Params:  params,
+        }
+}</span>
+
+// EncodeRequest marshals a JSON-RPC request to JSON bytes.
+func EncodeRequest(req *JSONRPCRequest) ([]byte, error) <span class="cov8" title="82">{
+        data, err := json.Marshal(req)
+        if err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("failed to encode JSON-RPC request: %w", err)
+        }</span>
+        <span class="cov8" title="81">return data, nil</span>
+}
+
+// DecodeResponse unmarshals JSON bytes into a JSON-RPC response.
+func DecodeResponse(data []byte) (*JSONRPCResponse, error) <span class="cov8" title="77">{
+        var resp JSONRPCResponse
+        if err := json.Unmarshal(data, &amp;resp); err != nil </span><span class="cov2" title="2">{
+                return nil, fmt.Errorf("failed to decode JSON-RPC response: %w", err)
+        }</span>
+        <span class="cov8" title="75">return &amp;resp, nil</span>
+}
+
+// CheckError checks if a JSON-RPC response contains an error and returns it.
+func CheckError(resp *JSONRPCResponse) error <span class="cov8" title="56">{
+        if resp.Error != nil </span><span class="cov3" title="5">{
+                return fmt.Errorf("JSON-RPC error %d: %s", resp.Error.Code, resp.Error.Message)
+        }</span>
+        <span class="cov7" title="51">return nil</span>
+}
+
+// ListToolsParams represents parameters for the tools/list method.
+type ListToolsParams struct {
+        // Currently no parameters required for tools/list
+}
+
+// ListToolsResult represents the result of a tools/list call.
+type ListToolsResult struct {
+        Tools []Tool `json:"tools"`
+}
+
+// CallToolParams represents parameters for the tools/call method.
+type CallToolParams struct {
+        Name      string                 `json:"name"`
+        Arguments map[string]interface{} `json:"arguments,omitempty"`
+}
+
+// CallToolResult represents the result of a tools/call.
+type CallToolResult struct {
+        Content []ContentBlock `json:"content"`
+        IsError bool           `json:"isError,omitempty"`
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package mcp
+
+import (
+        "bufio"
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "log/slog"
+        "os"
+        "os/exec"
+        "sync"
+        "time"
+
+        "mcpdiscord/internal/config"
+)
+
+// StdioClient implements the Client interface using stdio transport.
+// It spawns a subprocess for the MCP server and communicates via stdin/stdout.
+type StdioClient struct {
+        config config.MCPConfig
+        cmd    *exec.Cmd
+        stdin  io.WriteCloser
+        stdout io.ReadCloser
+        stderr io.ReadCloser
+        mu     sync.Mutex
+        logger *slog.Logger
+
+        // Response handling
+        responses   map[int64]chan *JSONRPCResponse
+        respMu      sync.Mutex
+        readerReady chan struct{} // Signals when response reader is ready
+}
+
+// NewStdioClient creates a new stdio-based MCP client.
+func NewStdioClient(cfg config.MCPConfig, logger *slog.Logger) *StdioClient <span class="cov8" title="29">{
+        if logger == nil </span><span class="cov1" title="1">{
+                logger = slog.Default()
+        }</span>
+        <span class="cov8" title="29">return &amp;StdioClient{
+                config:      cfg,
+                logger:      logger,
+                responses:   make(map[int64]chan *JSONRPCResponse),
+                readerReady: make(chan struct{}),
+        }</span>
+}
+
+// Connect starts the MCP server subprocess and establishes communication.
+func (c *StdioClient) Connect(ctx context.Context) error <span class="cov7" title="26">{
+        c.mu.Lock()
+
+        if c.cmd != nil </span><span class="cov1" title="1">{
+                c.mu.Unlock()
+                return fmt.Errorf("client already connected")
+        }</span>
+
+        <span class="cov7" title="25">c.logger.Info("connecting to MCP server",
+                "command", c.config.Command,
+                "args", c.config.Args)
+
+        // Create command
+        c.cmd = exec.CommandContext(ctx, c.config.Command, c.config.Args...)
+
+        // Set environment variables (inherit parent + add custom)
+        if len(c.config.Env) &gt; 0 </span><span class="cov3" title="3">{
+                c.cmd.Env = os.Environ() // Start with parent environment
+                for k, v := range c.config.Env </span><span class="cov5" title="7">{
+                        c.cmd.Env = append(c.cmd.Env, fmt.Sprintf("%s=%s", k, v))
+                }</span>
+        }
+        // Otherwise use default (inherits parent environment automatically)
+
+        // Setup pipes
+        <span class="cov7" title="25">var err error
+        c.stdin, err = c.cmd.StdinPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                c.mu.Unlock()
+                return fmt.Errorf("failed to create stdin pipe: %w", err)
+        }</span>
+
+        <span class="cov7" title="25">c.stdout, err = c.cmd.StdoutPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                c.mu.Unlock()
+                return fmt.Errorf("failed to create stdout pipe: %w", err)
+        }</span>
+
+        <span class="cov7" title="25">c.stderr, err = c.cmd.StderrPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                c.mu.Unlock()
+                return fmt.Errorf("failed to create stderr pipe: %w", err)
+        }</span>
+
+        // Start process
+        <span class="cov7" title="25">if err := c.cmd.Start(); err != nil </span><span class="cov3" title="3">{
+                c.mu.Unlock()
+                return fmt.Errorf("failed to start MCP server: %w", err)
+        }</span>
+
+        <span class="cov7" title="22">c.logger.Info("MCP server process started", "pid", c.cmd.Process.Pid)
+
+        // Start reading responses in background
+        go c.readResponses()
+        go c.readStderr()
+
+        // Release mutex before calling initialize() to avoid deadlock
+        c.mu.Unlock()
+
+        // Wait for reader to be ready
+        &lt;-c.readerReady
+
+        // Send initialize request (required by MCP protocol)
+        c.logger.Info("sending initialize request to MCP server")
+        if err := c.initialize(ctx); err != nil </span><span class="cov0" title="0">{
+                c.Close()
+                return fmt.Errorf("failed to initialize MCP server: %w", err)
+        }</span>
+
+        <span class="cov7" title="22">return nil</span>
+}
+
+// initialize sends the required initialize request to the MCP server.
+func (c *StdioClient) initialize(ctx context.Context) error <span class="cov7" title="22">{
+        c.logger.Info("initializing MCP server connection")
+
+        // Create initialize request with correct protocol version
+        req := NewRequest("initialize", map[string]interface{}{
+                "protocolVersion": "2024-11-05",
+                "capabilities":    map[string]interface{}{},
+                "clientInfo": map[string]interface{}{
+                        "name":    "mcpdiscord",
+                        "version": "0.1.0",
+                },
+        })
+
+        c.logger.Info("sending initialize request")
+        // Send request and wait for response
+        resp, err := c.sendRequest(ctx, req)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("initialize request failed: %w", err)
+        }</span>
+
+        <span class="cov7" title="22">c.logger.Info("received initialize response")
+        // Check for error
+        if err := CheckError(resp); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov7" title="22">c.logger.Info("MCP server initialized successfully, sending initialized notification")
+
+        // Send initialized notification (required by MCP protocol)
+        // Notifications have no ID and expect no response
+        notification := &amp;JSONRPCRequest{
+                JSONRPC: "2.0",
+                Method:  "notifications/initialized",
+        }
+
+        data, err := EncodeRequest(notification)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to encode initialized notification: %w", err)
+        }</span>
+
+        <span class="cov7" title="22">c.mu.Lock()
+        _, err = c.stdin.Write(append(data, '\n'))
+        c.mu.Unlock()
+
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to send initialized notification: %w", err)
+        }</span>
+
+        <span class="cov7" title="22">c.logger.Info("initialized notification sent, MCP server ready")
+        return nil</span>
+}
+
+// ListTools retrieves all available tools from the MCP server.
+func (c *StdioClient) ListTools(ctx context.Context) ([]Tool, error) <span class="cov6" title="12">{
+        c.logger.Debug("listing tools from MCP server")
+
+        // Create request
+        req := NewRequest("tools/list", ListToolsParams{})
+
+        // Send request and wait for response
+        resp, err := c.sendRequest(ctx, req)
+        if err != nil </span><span class="cov3" title="3">{
+                return nil, fmt.Errorf("failed to list tools: %w", err)
+        }</span>
+
+        // Check for error
+        <span class="cov5" title="9">if err := CheckError(resp); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        // Parse result
+        <span class="cov5" title="9">var result ListToolsResult
+        if err := json.Unmarshal(resp.Result, &amp;result); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse tools/list result: %w", err)
+        }</span>
+
+        <span class="cov5" title="9">c.logger.Info("discovered tools", "count", len(result.Tools))
+        return result.Tools, nil</span>
+}
+
+// CallTool executes a tool with the given arguments.
+func (c *StdioClient) CallTool(ctx context.Context, name string, arguments map[string]interface{}) (*ToolResult, error) <span class="cov7" title="21">{
+        c.logger.Debug("calling tool", "name", name, "arguments", arguments)
+
+        // Create request
+        params := CallToolParams{
+                Name:      name,
+                Arguments: arguments,
+        }
+        req := NewRequest("tools/call", params)
+
+        // Send request and wait for response
+        resp, err := c.sendRequest(ctx, req)
+        if err != nil </span><span class="cov3" title="3">{
+                return nil, fmt.Errorf("failed to call tool %s: %w", name, err)
+        }</span>
+
+        // Check for error
+        <span class="cov7" title="18">if err := CheckError(resp); err != nil </span><span class="cov1" title="1">{
+                return nil, err
+        }</span>
+
+        // Parse result
+        <span class="cov6" title="17">var result CallToolResult
+        if err := json.Unmarshal(resp.Result, &amp;result); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse tools/call result: %w", err)
+        }</span>
+
+        <span class="cov6" title="17">c.logger.Info("tool execution complete", "name", name, "isError", result.IsError)
+
+        return &amp;ToolResult{
+                Content: result.Content,
+                IsError: result.IsError,
+        }, nil</span>
+}
+
+// Close terminates the MCP server subprocess.
+func (c *StdioClient) Close() error <span class="cov7" title="24">{
+        c.mu.Lock()
+        defer c.mu.Unlock()
+
+        if c.cmd == nil || c.cmd.Process == nil </span><span class="cov2" title="2">{
+                return nil
+        }</span>
+
+        <span class="cov7" title="22">c.logger.Info("closing MCP client", "pid", c.cmd.Process.Pid)
+
+        // Close stdin to signal shutdown
+        if c.stdin != nil </span><span class="cov7" title="22">{
+                c.stdin.Close()
+        }</span>
+
+        // Wait for process to exit (with timeout)
+        <span class="cov7" title="22">done := make(chan error, 1)
+        go func() </span><span class="cov7" title="22">{
+                done &lt;- c.cmd.Wait()
+        }</span>()
+
+        <span class="cov7" title="22">select </span>{
+        case err := &lt;-done:<span class="cov7" title="22">
+                if err != nil </span><span class="cov0" title="0">{
+                        c.logger.Warn("MCP server exited with error", "error", err)
+                }</span>
+        case &lt;-time.After(5 * time.Second):<span class="cov0" title="0">
+                c.logger.Warn("MCP server did not exit cleanly, killing process")
+                if err := c.cmd.Process.Kill(); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to kill MCP server: %w", err)
+                }</span>
+        }
+
+        <span class="cov7" title="22">c.cmd = nil
+        return nil</span>
+}
+
+// sendRequest sends a JSON-RPC request and waits for the response.
+func (c *StdioClient) sendRequest(ctx context.Context, req *JSONRPCRequest) (*JSONRPCResponse, error) <span class="cov9" title="55">{
+        // Create response channel
+        respChan := make(chan *JSONRPCResponse, 1)
+        c.respMu.Lock()
+        c.responses[*req.ID] = respChan
+        c.respMu.Unlock()
+
+        // Clean up channel after we're done
+        defer func() </span><span class="cov9" title="55">{
+                c.respMu.Lock()
+                delete(c.responses, *req.ID)
+                c.respMu.Unlock()
+        }</span>()
+
+        // Encode and send request
+        <span class="cov9" title="55">data, err := EncodeRequest(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov9" title="55">if req.ID != nil </span><span class="cov9" title="55">{
+                c.logger.Info("sending JSON-RPC request", "method", req.Method, "id", *req.ID, "data", string(data))
+        }</span> else<span class="cov0" title="0"> {
+                c.logger.Info("sending JSON-RPC notification", "method", req.Method, "data", string(data))
+        }</span>
+
+        <span class="cov9" title="55">c.mu.Lock()
+        if c.stdin == nil </span><span class="cov2" title="2">{
+                c.mu.Unlock()
+                return nil, fmt.Errorf("client not connected")
+        }</span>
+        <span class="cov9" title="53">_, err = c.stdin.Write(append(data, '\n'))
+        c.mu.Unlock()
+
+        if err != nil </span><span class="cov3" title="3">{
+                return nil, fmt.Errorf("failed to send request: %w", err)
+        }</span>
+
+        <span class="cov9" title="50">c.logger.Info("request sent, waiting for response", "id", *req.ID)
+
+        // Wait for response with timeout
+        select </span>{
+        case resp := &lt;-respChan:<span class="cov9" title="49">
+                return resp, nil</span>
+        case &lt;-ctx.Done():<span class="cov1" title="1">
+                return nil, fmt.Errorf("request cancelled: %w", ctx.Err())</span>
+        case &lt;-time.After(120 * time.Second):<span class="cov0" title="0">
+                return nil, fmt.Errorf("request timed out after 120 seconds")</span>
+        }
+}
+
+// readResponses continuously reads JSON-RPC responses from stdout.
+func (c *StdioClient) readResponses() <span class="cov7" title="22">{
+        c.logger.Info("starting response reader goroutine")
+        scanner := bufio.NewScanner(c.stdout)
+
+        // Signal that reader is ready
+        close(c.readerReady)
+
+        // Log that we're about to start scanning
+        c.logger.Info("response reader: starting scan loop")
+
+        for scanner.Scan() </span><span class="cov10" title="72">{
+                line := scanner.Bytes()
+                if len(line) == 0 </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov10" title="72">c.logger.Info("received response line", "data", string(line))
+
+                resp, err := DecodeResponse(line)
+                if err != nil </span><span class="cov0" title="0">{
+                        c.logger.Error("failed to decode response", "error", err, "data", string(line))
+                        continue</span>
+                }
+
+                <span class="cov10" title="72">c.logger.Info("decoded response", "id", resp.ID)
+
+                // Route response to waiting request
+                c.respMu.Lock()
+                respChan, ok := c.responses[resp.ID]
+                c.respMu.Unlock()
+
+                if ok </span><span class="cov9" title="49">{
+                        c.logger.Info("routing response to waiting channel", "id", resp.ID)
+                        respChan &lt;- resp
+                }</span> else<span class="cov7" title="23"> {
+                        c.logger.Warn("received response for unknown request ID", "id", resp.ID)
+                }</span>
+        }
+
+        <span class="cov7" title="22">c.logger.Info("response reader: scan loop ended")
+        if err := scanner.Err(); err != nil </span><span class="cov0" title="0">{
+                c.logger.Error("error reading from MCP server stdout", "error", err)
+        }</span>
+        <span class="cov7" title="22">c.logger.Info("response reader goroutine exiting")</span>
+}
+
+// readStderr logs stderr output from the MCP server.
+func (c *StdioClient) readStderr() <span class="cov7" title="22">{
+        scanner := bufio.NewScanner(c.stderr)
+        for scanner.Scan() </span><span class="cov0" title="0">{
+                c.logger.Info("MCP server stderr", "message", scanner.Text())
+        }</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

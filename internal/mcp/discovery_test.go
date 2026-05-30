@@ -278,6 +278,73 @@ func TestDiscoverWithReconnect_DiscoveryFailsAfterReconnect(t *testing.T) {
 	}
 }
 
+func TestDiscoverTools_NameCollisions(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Tools with duplicate names
+	client := &MockClient{
+		tools: []Tool{
+			{
+				Name:        "duplicate_tool",
+				Description: "First tool",
+				InputSchema: InputSchema{
+					Type:       "object",
+					Properties: map[string]PropertySchema{},
+				},
+			},
+			{
+				Name:        "duplicate_tool",
+				Description: "Second tool with same name",
+				InputSchema: InputSchema{
+					Type:       "object",
+					Properties: map[string]PropertySchema{},
+				},
+			},
+		},
+	}
+
+	service := NewDiscoveryService(client, logger)
+	ctx := context.Background()
+
+	_, err := service.DiscoverTools(ctx)
+	if err == nil {
+		t.Error("Expected error for duplicate tool names")
+	}
+}
+
+func TestDiscoverWithReconnect_CloseError(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Client that fails on first discovery, then succeeds after reconnect
+	client := &MockClient{
+		tools: []Tool{
+			{
+				Name:        "test_tool",
+				Description: "A test tool",
+				InputSchema: InputSchema{
+					Type:       "object",
+					Properties: map[string]PropertySchema{},
+				},
+			},
+		},
+		err:       errors.New("first discovery fails"),
+		failCount: 1, // Fail once, then succeed
+	}
+
+	service := NewDiscoveryService(client, logger)
+	ctx := context.Background()
+
+	// Should succeed after reconnect
+	tools, err := service.DiscoverWithReconnect(ctx)
+	if err != nil {
+		t.Fatalf("DiscoverWithReconnect should succeed: %v", err)
+	}
+
+	if len(tools) != 1 {
+		t.Errorf("Expected 1 tool, got %d", len(tools))
+	}
+}
+
 func findParam(params []Parameter, name string) *Parameter {
 	for _, p := range params {
 		if p.Name == name {
